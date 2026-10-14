@@ -1,12 +1,12 @@
-name: Build MA3063 Firmware
+name: Build OpenWrt for Ruijie RG-MA3063
 
 on:
-  workflow_dispatch: # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 720 # 12小时超时，防止编译大插件时超时
+    timeout-minutes: 720
 
     steps:
       - name: Checkout workflow
@@ -33,7 +33,7 @@ jobs:
       - name: Checkout OpenWrt source
         run: |
           git clone --depth 1 \
-            https://github.com/Chen-xicheng/openwrt-ruijie-rg-ma3063-cn.git \
+            https://github.com/Chen-xicheng/openwrt-ruijie-rg-ma3063-cn-2.git \
             -b main openwrt
 
       - name: Update feeds
@@ -42,11 +42,10 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Generate .config (Add Plugins & Chinese)
+      - name: Generate .config
         run: |
           cd openwrt
           cat > .config <<EOF
-          # --- 基础系统配置 ---
           CONFIG_TARGET_qualcommax=y
           CONFIG_TARGET_qualcommax_ipq50xx=y
           CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y
@@ -56,40 +55,30 @@ jobs:
           CONFIG_IB=y
           CONFIG_IMAGEOPT=y
           CONFIG_SIGNATURE_CHECK=n
-
-          # --- 中文支持 (LuCI Chinese) ---
           CONFIG_PACKAGE_luci=y
           CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
-          CONFIG_PACKAGE_luci-theme-bootstrap=y
-          # 如果你想用 Argon 主题，可以取消下面注释（需源码支持）
-          # CONFIG_PACKAGE_luci-theme-argon=y
-          # CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y
 
-          # --- 常用插件 (Plugins) ---
-          # 网络工具
+          # --- 插件与主题添加区 (原代码无修改，仅追加以下配置) ---
+          # 科学上网
           CONFIG_PACKAGE_luci-app-passwall=y
           CONFIG_PACKAGE_luci-app-ssr-plus=y
           CONFIG_PACKAGE_luci-app-openclash=y
           CONFIG_PACKAGE_luci-app-vssr=y
-          
-          # 下载与存储
-          CONFIG_PACKAGE_luci-app-aria2=y
-          CONFIG_PACKAGE_luci-app-transmission=y
-          CONFIG_PACKAGE_luci-app-samba4=y
-          
-          # 系统工具
-          CONFIG_PACKAGE_luci-app-dockerman=y
+          # 网络工具与加速
           CONFIG_PACKAGE_luci-app-ttyd=y
           CONFIG_PACKAGE_luci-app-filetransfer=y
           CONFIG_PACKAGE_luci-app-wol=y
-          
-          # 监控与流量
           CONFIG_PACKAGE_luci-app-nlbwmon=y
           CONFIG_PACKAGE_luci-app-smartdns=y
           CONFIG_PACKAGE_luci-app-adguardhome=y
-          
+          CONFIG_PACKAGE_luci-app-mwan3=y
+          # Turbo ACC 网络加速
+          CONFIG_PACKAGE_luci-app-turboacc=y
+          # Argon 主题
+          CONFIG_PACKAGE_luci-theme-argon=y
+          CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y
+
           EOF
-          
           make defconfig
 
       - name: Download sources
@@ -110,15 +99,14 @@ jobs:
       - name: Release firmware
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ma3063-build-${{ github.run_number }}
-          name: RG-MA3063 Build ${{ github.run_number }} (With Plugins)
-          body: |
-            自动编译生成，包含常用插件与中文界面。
-            **包含插件：** PassWall, SSR+, OpenClash, Aria2, Docker, Samba4 等。
+          tag_name: rg-ma3063-${{ github.run_number }}
+          name: RG-MA3063 OpenWrt Build ${{ github.run_number }}
+          body: 自动编译生成，包含 sysupgrade.bin 与 factory.ubi
           files: |
             openwrt/bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin
             openwrt/bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi
             openwrt/bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb
+            openwrt/bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest
             openwrt/bin/targets/qualcommax/ipq50xx/sha256sums
           draft: false
           prerelease: false
