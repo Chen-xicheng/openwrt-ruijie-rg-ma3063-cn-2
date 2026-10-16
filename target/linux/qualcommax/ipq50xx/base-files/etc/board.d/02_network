@@ -20,9 +20,11 @@ ipq50xx_setup_interfaces()
 	linksys,mx2000|\
 	linksys,mx5500|\
 	linksys,spnmx56|\
-	ruijie,rg-ma3063|\
 	xiaomi,ax6000)
 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3" "wan"
+		;;
+	ruijie,rg-ma3063)
+		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3" "eth0"
 		;;
 	linksys,mx6200|\
 	yuncore,ax830|\
