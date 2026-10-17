@@ -58,7 +58,16 @@ jobs:
           CONFIG_PACKAGE_luci=y
           CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
 
-          # --- 插件与主题添加区 (原代码无修改，仅追加以下配置) ---
+          # --- WiFi 驱动和固件 ---
+          CONFIG_PACKAGE_kmod-mt7915e=y
+          CONFIG_PACKAGE_wireless-regdb=y
+          CONFIG_PACKAGE_wpad-basic-mbedtls=y
+          CONFIG_PACKAGE_dnsmasq=y
+          CONFIG_PACKAGE_ip6tables-mod-nat=y
+          CONFIG_PACKAGE_firewall4=y
+          CONFIG_PACKAGE_nftables=y
+
+          # --- 插件与主题添加区 ---
           # 科学上网
           CONFIG_PACKAGE_luci-app-passwall=y
           CONFIG_PACKAGE_luci-app-ssr-plus=y
@@ -79,6 +88,134 @@ jobs:
           EOF
           make defconfig
 
+      - name: Inject wireless and network config
+        run: |
+          cd openwrt
+          # 创建 wireless 配置文件目录
+          mkdir -p target/linux/qualcommax/ipq50xx/base-files/etc/config/
+          
+          # 写入 wireless 配置
+          cat > target/linux/qualcommax/ipq50xx/base-files/etc/config/wireless <<'WIRELESS_EOF'
+# Copyright (C) 2016 OpenWrt.org
+#
+# Configuration for Ruijie RG-MA3063 (IPQ5018)
+
+config wifi-device 'radio0'
+	option type 'mac80211'
+	option channel '6'
+	option hwmode '11g'
+	option htmode 'HT20'
+	option country 'CN'
+	option disabled '0'
+	option maxassoc '32'
+
+config wifi-iface 'radio0_ap'
+	option device 'radio0'
+	option network 'lan'
+	option mode 'ap'
+	option ssid 'OpenWrt-MA3063-2.4G'
+	option encryption 'psk2'
+	option key 'openwrt123'
+	option maxassoc '32'
+	option wmm '1'
+
+config wifi-device 'radio1'
+	option type 'mac80211'
+	option channel '36'
+	option hwmode '11a'
+	option htmode 'VHT160'
+	option country 'CN'
+	option disabled '0'
+	option maxassoc '32'
+
+config wifi-iface 'radio1_ap'
+	option device 'radio1'
+	option network 'lan'
+	option mode 'ap'
+	option ssid 'OpenWrt-MA3063-5G'
+	option encryption 'psk2'
+	option key 'openwrt123'
+	option maxassoc '32'
+	option wmm '1'
+WIRELESS_EOF
+
+          # 写入 network 配置
+          cat > target/linux/qualcommax/ipq50xx/base-files/etc/config/network <<'NETWORK_EOF'
+# Copyright (C) 2014 OpenWrt.org
+#
+# Network configuration for Ruijie RG-MA3063
+
+config interface 'loopback'
+	option ifname 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'
+
+config globals 'globals'
+	option ula_prefix 'fd8c:XXXX:XXXX::/48'
+
+config interface 'lan'
+	option type 'bridge'
+	option ifname 'br-lan'
+	option proto 'static'
+	option ipaddr '192.168.1.1'
+	option netmask '255.255.255.0'
+	option ip6assign '60'
+
+config interface 'wan'
+	option ifname 'wan'
+	option proto 'dhcp'
+
+config interface 'wan6'
+	option ifname 'wan'
+	option proto 'dhcpv6'
+NETWORK_EOF
+
+          # 写入 dhcp/dnsmasq 配置
+          cat > target/linux/qualcommax/ipq50xx/base-files/etc/config/dhcp <<'DHCP_EOF'
+# DHCP/Dnsmasq configuration for Ruijie RG-MA3063
+
+config dnsmasq
+    option domainneeded '1'
+    option boguspriv '1'
+    option filterwin2k '0'
+    option localise_queries '1'
+    option rebind_protection '1'
+    option rebind_localhost '1'
+    option local '/lan/'
+    option domain 'lan'
+    option expandhosts '1'
+    option nonegcache '0'
+    option authoritative '1'
+    option leasefile '/tmp/dhcp.leases'
+    option resolvefile '/tmp/resolv.conf.auto'
+    option nonwildcard '1'
+    option localservice '1'
+
+config dhcp 'lan'
+    option interface 'lan'
+    option start '100'
+    option limit '150'
+    option lease '12h'
+    option dhcpv4 'server'
+    option dhcpv6 'server'
+    option ra 'server'
+    option ra_slaac '1'
+
+config dhcp 'wan'
+    option interface 'wan'
+    option ignore '1'
+
+config odhcpd 'odhcpd'
+    option maindhcp '0'
+    option leasefile '/tmp/hosts/odhcpd'
+    option leasetrigger '/usr/sbin/odhcpd-update'
+    option loglevel '4'
+DHCP_EOF
+
+          echo "Config files injected successfully"
+          ls -la target/linux/qualcommax/ipq50xx/base-files/etc/config/
+
       - name: Download sources
         run: |
           cd openwrt
@@ -93,6 +230,19 @@ jobs:
         run: |
           echo "=== Find firmware ==="
           ls -l openwrt/bin/targets/qualcommax/ipq50xx/ || true
+          echo "=== Check for firmware files ==="
+          find openwrt/bin/targets/qualcommax/ipq50xx/ -type f -name "*.bin" -o -name "*.ubi" -o -name "*.itb" -o -name "*.manifest" -o -name "sha256sums" 2>/dev/null
+
+      - name: Create SHA256 checksums
+        run: |
+          cd openwrt
+          cd bin/targets/qualcommax/ipq50xx/ || true
+          if [ -f openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin ]; then
+            sha256sum openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin \
+                      openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi \
+                      openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb \
+                      openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest > sha256sums 2>/dev/null || true
+          fi
 
       - name: Release firmware
         uses: softprops/action-gh-release@v2
