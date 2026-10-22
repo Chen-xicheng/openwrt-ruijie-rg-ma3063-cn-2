@@ -36,7 +36,7 @@ jobs:
       - name: Apply Device Patch
         run: |
           cd openwrt
-          git apply ../patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch
+          git apply ../patches/0001-add-ruijie-rg-ma3063.patch  # 请确认并替换为实际文件名
 
       # 新增：将 Argon 主题克隆到 package 目录，使编译系统识别 luci-theme-argon 和 luci-i18n-argon-zh-cn
       - name: Clone Argon Theme
