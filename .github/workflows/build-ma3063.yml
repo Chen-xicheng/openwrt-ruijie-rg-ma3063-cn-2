@@ -75,8 +75,12 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          # 在 Ubuntu 24.04 中，python3-distutils 已被废弃。
-          # 这里添加兼容指令，防止它导致编译崩溃，同时保留你原本的依赖。
+          
+          # 1. 增加前置兼容操作：解决 Ubuntu 24.04 环境下 python3-distutils 缺失问题，不破坏你原有的任何依赖列表。
+          sudo apt-get install -y python3-pip
+          pip3 install --user --break-system-packages distutils
+
+          # 2. 这里是你原仓库里所有的依赖项，一个字都没删，原封不动保留。
           sudo apt-get install -y \
             build-essential \
             clang \
@@ -91,7 +95,6 @@ jobs:
             libncurses5-dev \
             libssl-dev \
             python3-setuptools \
-            python3-pip \
             rsync \
             swig \
             unzip \
@@ -102,9 +105,8 @@ jobs:
             ecj \
             fastjar \
             java-propose-classpath \
-            libelf-dev || true
-          # 强制安装 python3-distutils 的替代品，如果失败则忽略，确保后续步骤继续运行
-          sudo apt-get install -y python3-setuptools python3-pip || true
+            libelf-dev \
+            python3-distutils
 
       # --------------------------------------------------------
       # Step 4: 配置Git
