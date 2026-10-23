@@ -17,7 +17,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 360 
+    timeout-minutes: 360
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,10 +25,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential ccache ecj fastjar file g++ gawk \
-          gettext git java-propose-classpath libelf-dev libncurses5-dev \
-          libncursesw5-dev libssl-dev python3 python3-dev python3-setuptools python3-pip \
-          rsync subversion swig time xsltproc zlib1g-dev
+          sudo apt-get install -y build-essential ccache ecj fastjar file g++ gawk gettext git java-propose-classpath libelf-dev libncurses5-dev libncursesw5-dev libssl-dev python3 python3-dev python3-setuptools python3-pip rsync subversion swig time xsltproc zlib1g-dev
 
       - name: Clone OpenWrt Source
         run: |
@@ -72,56 +69,51 @@ jobs:
           ./scripts/feeds install -a
           make defconfig
 
-          # 【新增】补全 aarch64 架构的 site 配置文件
+          echo "=== 补全 aarch64 架构的 site 配置文件 ==="
           if [ ! -f "include/site/aarch64" ]; then
-            echo "创建缺失的 include/site/aarch64 文件..."
-            cat > include/site/aarch64 << 'EOF'
-#!/bin/sh
-. $TOPDIR/include/site/linux
-ac_cv_c_littleendian=${ac_cv_c_littleendian=yes}
-ac_cv_c_bigendian=${ac_cv_c_bigendian=no}
-ac_cv_sizeof___int64=8
-ac_cv_sizeof_char=1
-ac_cv_sizeof_int=4
-ac_cv_sizeof_int16_t=2
-ac_cv_sizeof_int32_t=4
-ac_cv_sizeof_int64_t=8
-ac_cv_sizeof_long_int=8
-ac_cv_sizeof_long_long=8
-ac_cv_sizeof_long=8
-ac_cv_sizeof_off_t=8
-ac_cv_sizeof_short_int=2
-ac_cv_sizeof_short=2
-ac_cv_sizeof_size_t=8
-ac_cv_sizeof_ssize_t=8
-ac_cv_sizeof_u_int16_t=2
-ac_cv_sizeof_u_int32_t=4
-ac_cv_sizeof_u_int64_t=8
-ac_cv_sizeof_uint16_t=2
-ac_cv_sizeof_uint32_t=4
-ac_cv_sizeof_uint64_t=8
-ac_cv_sizeof_unsigned_int=4
-ac_cv_sizeof_unsigned_long=8
-ac_cv_sizeof_unsigned_long_long=8
-ac_cv_sizeof_unsigned_short=2
-ac_cv_sizeof_void_p=8
-EOF
+            mkdir -p include/site
+            echo '#!/bin/sh' > include/site/aarch64
+            echo '. $TOPDIR/include/site/linux' >> include/site/aarch64
+            echo 'ac_cv_c_littleendian=${ac_cv_c_littleendian=yes}' >> include/site/aarch64
+            echo 'ac_cv_c_bigendian=${ac_cv_c_bigendian=no}' >> include/site/aarch64
+            echo 'ac_cv_sizeof___int64=8' >> include/site/aarch64
+            echo 'ac_cv_sizeof_char=1' >> include/site/aarch64
+            echo 'ac_cv_sizeof_int=4' >> include/site/aarch64
+            echo 'ac_cv_sizeof_int16_t=2' >> include/site/aarch64
+            echo 'ac_cv_sizeof_int32_t=4' >> include/site/aarch64
+            echo 'ac_cv_sizeof_int64_t=8' >> include/site/aarch64
+            echo 'ac_cv_sizeof_long_int=8' >> include/site/aarch64
+            echo 'ac_cv_sizeof_long_long=8' >> include/site/aarch64
+            echo 'ac_cv_sizeof_long=8' >> include/site/aarch64
+            echo 'ac_cv_sizeof_off_t=8' >> include/site/aarch64
+            echo 'ac_cv_sizeof_short_int=2' >> include/site/aarch64
+            echo 'ac_cv_sizeof_short=2' >> include/site/aarch64
+            echo 'ac_cv_sizeof_size_t=8' >> include/site/aarch64
+            echo 'ac_cv_sizeof_ssize_t=8' >> include/site/aarch64
+            echo 'ac_cv_sizeof_u_int16_t=2' >> include/site/aarch64
+            echo 'ac_cv_sizeof_u_int32_t=4' >> include/site/aarch64
+            echo 'ac_cv_sizeof_u_int64_t=8' >> include/site/aarch64
+            echo 'ac_cv_sizeof_uint16_t=2' >> include/site/aarch64
+            echo 'ac_cv_sizeof_uint32_t=4' >> include/site/aarch64
+            echo 'ac_cv_sizeof_uint64_t=8' >> include/site/aarch64
+            echo 'ac_cv_sizeof_unsigned_int=4' >> include/site/aarch64
+            echo 'ac_cv_sizeof_unsigned_long=8' >> include/site/aarch64
+            echo 'ac_cv_sizeof_unsigned_long_long=8' >> include/site/aarch64
+            echo 'ac_cv_sizeof_unsigned_short=2' >> include/site/aarch64
+            echo 'ac_cv_sizeof_void_p=8' >> include/site/aarch64
           fi
 
-          cat >> .config <<EOF
-          CONFIG_TARGET_qualcommax=y
-          CONFIG_TARGET_qualcommax_ipq50xx=y
-          CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y
-
-          CONFIG_PACKAGE_luci=y
-          CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
-          CONFIG_PACKAGE_luci-theme-argon=y
-          CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y
-          CONFIG_PACKAGE_luci-app-ttyd=y
-          EOF
+          echo "=== 追加目标平台及插件配置 ==="
+          echo "CONFIG_TARGET_qualcommax=y" >> .config
+          echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
+          echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
+          echo "CONFIG_PACKAGE_luci=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
+          echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
 
           make defconfig
-          
           make download -j8
 
       - name: Clean before compile
