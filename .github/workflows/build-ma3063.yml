@@ -39,12 +39,16 @@ jobs:
       - name: Apply Device Patch
         run: |
           cd openwrt
-          echo "=== 正在搜索仓库中的 .patch 文件 ==="
-          PATCH_FILE=$(find .. -name "*.patch" -type f | head -n 1)
+          echo "=== 正在仓库根目录中搜索设备补丁 ==="
+          # 关键修正：将搜索范围严格限定在上一级（即仓库根目录），排除 openwrt 源码树
+          PATCH_FILE=$(find .. -path ../openwrt -prune -o -name "*.patch" -type f -print | head -n 1)
+          
           if [ -z "$PATCH_FILE" ]; then
-            echo "错误: 在仓库中未找到任何 .patch 文件，请确认文件已上传。"
+            echo "错误: 在仓库根目录（排除 openwrt 源码树）中未找到任何 .patch 文件。"
+            echo "请确认补丁文件已上传至仓库的 patches/ 目录下。"
             exit 1
           fi
+          
           echo "找到补丁文件: $PATCH_FILE"
           echo "开始应用补丁..."
           git apply "$PATCH_FILE"
@@ -75,9 +79,3 @@ jobs:
           EOF
 
           make defconfig
-
-      # 如果你原来的代码中有编译步骤（如 make -j$(nproc)），请取消注释或替换为你的命令
-      # - name: Compile Firmware
-      #   run: |
-      #     cd openwrt
-      #     make -j$(nproc) || make -j1 V=s
