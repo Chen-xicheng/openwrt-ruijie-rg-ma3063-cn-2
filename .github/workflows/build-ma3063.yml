@@ -12,7 +12,7 @@ on:
       - main
     paths:
       - '.github/workflows/build-ma3063.yml'
-      - 'patches/**'
+      - '**/*.patch'
 
 jobs:
   build:
@@ -21,6 +21,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 修复 Ubuntu 24.04 下 python3-distutils 缺失的问题
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -38,9 +39,17 @@ jobs:
       - name: Apply Device Patch
         run: |
           cd openwrt
-          # 修正：补丁位于 openwrt 目录内部，路径应为 patches/... 而非 ../patches/...
-          git apply patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch
+          echo "=== 正在搜索仓库中的 .patch 文件 ==="
+          PATCH_FILE=$(find .. -name "*.patch" -type f | head -n 1)
+          if [ -z "$PATCH_FILE" ]; then
+            echo "错误: 在仓库中未找到任何 .patch 文件，请确认文件已上传。"
+            exit 1
+          fi
+          echo "找到补丁文件: $PATCH_FILE"
+          echo "开始应用补丁..."
+          git apply "$PATCH_FILE"
 
+      # 将 Argon 主题克隆到 package 目录
       - name: Clone Argon Theme
         run: |
           cd openwrt/package
@@ -66,3 +75,9 @@ jobs:
           EOF
 
           make defconfig
+
+      # 如果你原来的代码中有编译步骤（如 make -j$(nproc)），请取消注释或替换为你的命令
+      # - name: Compile Firmware
+      #   run: |
+      #     cd openwrt
+      #     make -j$(nproc) || make -j1 V=s
