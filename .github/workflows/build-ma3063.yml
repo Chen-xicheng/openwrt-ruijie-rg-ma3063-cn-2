@@ -12,7 +12,7 @@ on:
       - main
     paths:
       - '.github/workflows/build-ma3063.yml'
-      - '**/*.patch'
+      - 'patches/**'
 
 jobs:
   build:
@@ -21,7 +21,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 修复 Ubuntu 24.04 下 python3-distutils 缺失的问题
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -36,24 +35,26 @@ jobs:
           cd openwrt
           git checkout ${{ github.event.inputs.openwrt_commit || '486b4a4b3ede480635a185234fc624c969426f13' }}
 
-      - name: Apply Device Patch
+      - name: Apply Device Patch or Copy Target
         run: |
           cd openwrt
-          echo "=== 正在仓库根目录中搜索设备补丁 ==="
-          # 关键修正：将搜索范围严格限定在上一级（即仓库根目录），排除 openwrt 源码树
-          PATCH_FILE=$(find .. -path ../openwrt -prune -o -name "*.patch" -type f -print | head -n 1)
-          
-          if [ -z "$PATCH_FILE" ]; then
-            echo "错误: 在仓库根目录（排除 openwrt 源码树）中未找到任何 .patch 文件。"
-            echo "请确认补丁文件已上传至仓库的 patches/ 目录下。"
-            exit 1
+          echo "=== 开始检查设备文件 ==="
+          # 1. 优先检查是否有 patches 文件夹且里面有补丁
+          if [ -d "../patches" ] && [ "$(ls -A ../patches/*.patch 2>/dev/null)" ]; then
+            echo "发现 patches 文件夹，准备应用补丁..."
+            for patch in ../patches/*.patch; do
+              echo "正在应用: $patch"
+              git apply "$patch" || echo "补丁应用失败: $patch"
+            done
+          # 2. 如果没有补丁，检查根目录是否有 target 文件夹（很多魔改仓库直接包含源码）
+          elif [ -d "../target" ]; then
+            echo "未发现补丁，但发现了 target 文件夹，直接覆盖源码..."
+            cp -r ../target ./
+          else
+            echo "警告: 既没有找到补丁文件，也没有找到 target 文件夹！请检查仓库文件是否完整。"
           fi
-          
-          echo "找到补丁文件: $PATCH_FILE"
-          echo "开始应用补丁..."
-          git apply "$PATCH_FILE"
+          echo "=== 设备文件处理完成 ==="
 
-      # 将 Argon 主题克隆到 package 目录
       - name: Clone Argon Theme
         run: |
           cd openwrt/package
@@ -79,3 +80,9 @@ jobs:
           EOF
 
           make defconfig
+
+      # 如果你原本的代码里有编译命令，请将下面注释打开
+      # - name: Compile Firmware
+      #   run: |
+      #     cd openwrt
+      #     make -j$(nproc) || make -j1 V=s
