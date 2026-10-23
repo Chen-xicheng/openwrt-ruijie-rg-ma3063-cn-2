@@ -6,7 +6,8 @@ on:
       openwrt_commit:
         description: 'OpenWrt commit hash to build against'
         required: true
-        default: '486b4a4b3ede480635a185234fc624c969426f13'
+        # 建议使用 openwrt-24.10 分支的最新提交，或你确认可用的 commit
+        default: 'openwrt-24.10' 
   push:
     branches:
       - main
@@ -35,7 +36,16 @@ jobs:
         run: |
           git clone https://github.com/openwrt/openwrt.git openwrt
           cd openwrt
-          git checkout ${{ github.event.inputs.openwrt_commit || '486b4a4b3ede480635a185234fc624c969426f13' }}
+          # 【关键修改】如果输入是分支名（如 openwrt-24.10），则直接切换
+          # 如果输入是 commit hash，则先切到该分支再 checkout
+          INPUT_REF="${{ github.event.inputs.openwrt_commit }}"
+          if [[ "$INPUT_REF" == openwrt-* ]]; then
+            git checkout "$INPUT_REF"
+          else
+            # 默认尝试从 openwrt-24.10 分支切出指定 commit
+            git checkout openwrt-24.10 2>/dev/null || true
+            git checkout "$INPUT_REF" 2>/dev/null || { echo "Commit not found in openwrt-24.10, trying default branch..."; git checkout "$INPUT_REF"; }
+          fi
 
       - name: Apply Device Patch or Copy Target
         run: |
@@ -84,7 +94,12 @@ jobs:
           # 下载编译所需的依赖包
           make download -j8
 
-      # 【新增】真正开始编译固件（这步会非常耗时，请耐心等待）
+      # 【关键修改】在编译前强制清理，确保环境纯净
+      - name: Clean before compile
+        run: |
+          cd openwrt
+          make dirclean
+
       - name: Compile Firmware
         run: |
           cd openwrt
@@ -92,16 +107,13 @@ jobs:
           # 使用所有核心进行编译，如果出错则使用单线程重新编译以显示详细错误信息
           make -j$(nproc) || make -j1 V=s
 
-      # 【新增】上传编译好的固件，以便下载
       - name: Upload Firmware
         uses: actions/upload-artifact@v4
         with:
           name: OpenWrt-RG-MA3063-Firmware
-          # 抓取生成的固件文件（通常包含 .bin, .img, .itb 等）
           path: |
             openwrt/bin/targets/qualcommax/ipq50xx/*.bin
             openwrt/bin/targets/qualcommax/ipq50xx/*.img
             openwrt/bin/targets/qualcommax/ipq50xx/*.itb
             openwrt/bin/targets/qualcommax/ipq50xx/*.manifest
-          # 即使没有找到匹配的文件，也不要让工作流报错
           if-no-files-found: warn
