@@ -6,8 +6,7 @@ on:
       openwrt_commit:
         description: 'OpenWrt commit hash to build against'
         required: true
-        # 建议使用 openwrt-24.10 分支的最新提交，或你确认可用的 commit
-        default: 'openwrt-24.10' 
+        default: 'openwrt-24.10'
   push:
     branches:
       - main
@@ -18,7 +17,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # 编译固件通常需要几个小时，防止 GitHub 默认超时导致失败
     timeout-minutes: 360 
     steps:
       - name: Checkout
@@ -36,13 +34,10 @@ jobs:
         run: |
           git clone https://github.com/openwrt/openwrt.git openwrt
           cd openwrt
-          # 【关键修改】如果输入是分支名（如 openwrt-24.10），则直接切换
-          # 如果输入是 commit hash，则先切到该分支再 checkout
           INPUT_REF="${{ github.event.inputs.openwrt_commit }}"
           if [[ "$INPUT_REF" == openwrt-* ]]; then
             git checkout "$INPUT_REF"
           else
-            # 默认尝试从 openwrt-24.10 分支切出指定 commit
             git checkout openwrt-24.10 2>/dev/null || true
             git checkout "$INPUT_REF" 2>/dev/null || { echo "Commit not found in openwrt-24.10, trying default branch..."; git checkout "$INPUT_REF"; }
           fi
@@ -77,6 +72,42 @@ jobs:
           ./scripts/feeds install -a
           make defconfig
 
+          # 【新增】补全 aarch64 架构的 site 配置文件
+          if [ ! -f "include/site/aarch64" ]; then
+            echo "创建缺失的 include/site/aarch64 文件..."
+            cat > include/site/aarch64 << 'EOF'
+#!/bin/sh
+. $TOPDIR/include/site/linux
+ac_cv_c_littleendian=${ac_cv_c_littleendian=yes}
+ac_cv_c_bigendian=${ac_cv_c_bigendian=no}
+ac_cv_sizeof___int64=8
+ac_cv_sizeof_char=1
+ac_cv_sizeof_int=4
+ac_cv_sizeof_int16_t=2
+ac_cv_sizeof_int32_t=4
+ac_cv_sizeof_int64_t=8
+ac_cv_sizeof_long_int=8
+ac_cv_sizeof_long_long=8
+ac_cv_sizeof_long=8
+ac_cv_sizeof_off_t=8
+ac_cv_sizeof_short_int=2
+ac_cv_sizeof_short=2
+ac_cv_sizeof_size_t=8
+ac_cv_sizeof_ssize_t=8
+ac_cv_sizeof_u_int16_t=2
+ac_cv_sizeof_u_int32_t=4
+ac_cv_sizeof_u_int64_t=8
+ac_cv_sizeof_uint16_t=2
+ac_cv_sizeof_uint32_t=4
+ac_cv_sizeof_uint64_t=8
+ac_cv_sizeof_unsigned_int=4
+ac_cv_sizeof_unsigned_long=8
+ac_cv_sizeof_unsigned_long_long=8
+ac_cv_sizeof_unsigned_short=2
+ac_cv_sizeof_void_p=8
+EOF
+          fi
+
           cat >> .config <<EOF
           CONFIG_TARGET_qualcommax=y
           CONFIG_TARGET_qualcommax_ipq50xx=y
@@ -91,10 +122,8 @@ jobs:
 
           make defconfig
           
-          # 下载编译所需的依赖包
           make download -j8
 
-      # 【关键修改】在编译前强制清理，确保环境纯净
       - name: Clean before compile
         run: |
           cd openwrt
@@ -104,7 +133,6 @@ jobs:
         run: |
           cd openwrt
           echo "开始编译固件，这可能需要 1-3 小时..."
-          # 使用所有核心进行编译，如果出错则使用单线程重新编译以显示详细错误信息
           make -j$(nproc) || make -j1 V=s
 
       - name: Upload Firmware
