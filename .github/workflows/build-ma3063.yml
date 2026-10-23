@@ -1,11 +1,12 @@
 name: Build OpenWrt Firmware for Ruijie RG-MA3063
+
 on:
   workflow_dispatch:
     inputs:
       openwrt_commit:
         description: 'OpenWrt commit hash to build against'
         required: true
-        default: '486b4a4b3ede480635a185234fc624c969426f13' # 用户原代码中的 commit
+        default: '486b4a4b3ede480635a185234fc624c969426f13'
   push:
     branches:
       - main
@@ -37,13 +38,8 @@ jobs:
       - name: Apply Device Patch
         run: |
           cd openwrt
-          # 打印出上一级目录 patches 文件夹的内容，方便在日志中查看真实文件名
-          echo "检查补丁文件目录:"
-          ls -l ../patches/ || echo "警告: 找不到 ../patches/ 目录"
-          
-          # 【注意】请将下方的文件名替换为你仓库中真实存在的文件名！
-          # 如果报错，请查看上方打印的目录内容。
-          git apply ../patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch
+          # 修正：补丁位于 openwrt 目录内部，路径应为 patches/... 而非 ../patches/...
+          git apply patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch
 
       - name: Clone Argon Theme
         run: |
@@ -57,12 +53,16 @@ jobs:
           ./scripts/feeds install -a
           make defconfig
 
-          # 保留你原有的配置，并追加所需插件和主题
-          # 注意：如果你原有的 .config 还有其他内容，请确保不会被覆盖
           cat >> .config <<EOF
+          CONFIG_TARGET_qualcommax=y
+          CONFIG_TARGET_qualcommax_ipq50xx=y
+          CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y
+
           CONFIG_PACKAGE_luci=y
           CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
           CONFIG_PACKAGE_luci-theme-argon=y
           CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y
           CONFIG_PACKAGE_luci-app-ttyd=y
           EOF
+
+          make defconfig
