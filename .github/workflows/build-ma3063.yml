@@ -37,29 +37,38 @@ jobs:
           cd openwrt
           export ARCH=aarch64
           
-          echo "=== 更新 feeds ==="
+          echo "=== 更新 feeds 并安装基础包 ==="
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          echo "=== 清理可能存在的错误默认配置 ==="
-          # 删除可能自带的错误配置，确保从零开始
+          echo "=== 彻底清理旧配置 ==="
           rm -f .config
 
           echo "=== 强制锁定目标设备为锐捷 MA3063 ==="
-          # 写入基础平台
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
-          # 只选中锐捷 MA3063
+          
+          # 强制指定锐捷设备，并重写 PROFILE 变量！
           echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
-          # 显式禁用那个错误的 CMCC 设备
+          echo "CONFIG_TARGET_PROFILE=\"DEVICE_ruijie_rg-ma3063\"" >> .config
+          
+          # 显式禁用 CMCC，斩草除根
           echo "# CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_cmcc_mr3000d-ci is not set" >> .config
 
-          echo "=== 生成基础配置 ==="
+          echo "=== 生成配置 ==="
           make defconfig
 
-          # 验证是否选中了正确的设备
-          echo "=== 验证设备选择 ==="
-          grep "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_" .config
+          echo "=== 终极防御：检查是否真的选对设备 ==="
+          if grep -q "CONFIG_TARGET_PROFILE=\"DEVICE_cmcc_mr3000d-ci\"" .config; then
+            echo "❌ 致命错误：系统依然选择了 CMCC 固件！"
+            echo "👉 这说明你仓库里的设备名称不是 ruijie_rg-ma3063。"
+            echo "以下是系统识别到的所有设备列表："
+            grep "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_" .config | grep "=y"
+            exit 1
+          fi
+          
+          echo "✅ 成功锁定目标设备！"
+          grep "CONFIG_TARGET_PROFILE" .config
 
           echo "=== 追加插件和主题配置 ==="
           echo 'CONFIG_PACKAGE_luci=y' >> .config
