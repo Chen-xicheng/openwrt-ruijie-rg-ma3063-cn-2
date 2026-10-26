@@ -65,36 +65,39 @@ jobs:
       - name: Configure Build
         run: |
           cd openwrt
-          echo "=== 使用 Base64 安全创建 site 文件 ==="
-          mkdir -p include/site
-          echo "IyEvYmluL3NoCi4gJFNPVERJUi9pbmNsdWRlL3NpdGUvbGludXgKYWNfY3ZfY19saXR0bGVlbmRpYW49JHthY19jdl9jX2xpdHRsZWVuZGlhbj15ZXN9CmFjX2N2X2NfYmlnZW5kaWFuPSR7YWNfY3ZfY19iaWdlbmRpYW49bm99CmFjX2N2X3NpemVvZl9fX2ludDY0PTgKYWNfY3Zfc2l6ZW9mX2NoYXI9MQphY19jdl9zaXplb2ZfaW50PTQKYWNfY3Zfc2l6ZW9mX2ludDE2X3Q9MgphY19jdl9zaXplb2ZfaW50MzJfdD00CmFjX2N2X3NpemVvZl9pbnQ2NF90PTgKYWNfY3Zfc2l6ZW9mX2xvbmdfaW50PTgKYWNfY3Zfc2l6ZW9mX2xvbmdfbG9uZz04CmFjX2N2X3NpemVvZl9sb25nPTgKYWNfY3Zfc2l6ZW9mX29mZl90PTgKYWNfY3Zfc2l6ZW9mX3Nob3J0X2ludD0yCmFjX2N2X3NpemVvZl9zaG9ydD0yCmFjX2N2X3NpemVvZl9zaXplX3Q9OAphY19jdl9zaXplb2Zfc3NpemVfdD04CmFjX2N2X3NpemVvZl91X2ludDE2X3Q9MgphY19jdl9zaXplb2ZfdV9pbnQzMl90PTQKYWNfY3Zfc2l6ZW9mX3VfaW50NjRfdD04CmFjX2N2X3NpemVvZl91aW50MTZfdD0yCmFjX2N2X3NpemVvZl91aW50MzJfdD00CmFjX2N2X3NpemVvZl91aW50NjRfdD04CmFjX2N2X3NpemVvZl91bnNpZ25lZF9pbnQ9NAphY19jdl9zaXplb2ZfdW5zaWduZWRfbG9uZz04CmFjX2N2X3NpemVvZl91bnNpZ25lZF9sb25nX2xvbmc9OAphY19jdl9zaXplb2ZfdW5zaWduZWRfc2hvcnQ9MgphY19jdl9zaXplb2Zfdm9pZF9wPTgK" | base64 -d > include/site/aarch64
+
+          echo "=== 从官方源码获取 aarch64 site 文件 ==="
+          # 从 OpenWrt 官方源码库获取对应版本的 aarch64 配置文件
+          wget -O include/site/aarch64 "https://raw.githubusercontent.com/openwrt/openwrt/openwrt-24.10/include/site/aarch64"
           chmod +x include/site/aarch64
-          
+          echo "文件已下载，检查内容前几行："
+          head -5 include/site/aarch64
+
           echo "=== 设置 ARCH 环境变量 ==="
           export ARCH=aarch64
 
           echo "=== 更新 feeds ==="
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-          
+
           echo "=== 写入基础目标配置 ==="
           echo 'CONFIG_TARGET_qualcommax=y' > .config
           echo 'CONFIG_TARGET_qualcommax_ipq50xx=y' >> .config
           echo 'CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y' >> .config
-          
+
           echo "=== 生成默认配置 ==="
           make defconfig
-          
+
           echo "=== 追加插件和主题 ==="
           echo 'CONFIG_PACKAGE_luci=y' >> .config
           echo 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' >> .config
           echo 'CONFIG_PACKAGE_luci-theme-argon=y' >> .config
           echo 'CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y' >> .config
           echo 'CONFIG_PACKAGE_luci-app-ttyd=y' >> .config
-          
+
           echo "=== 刷新配置 ==="
           make defconfig
-          
+
           echo "=== 预下载依赖包 ==="
           make download -j8
 
