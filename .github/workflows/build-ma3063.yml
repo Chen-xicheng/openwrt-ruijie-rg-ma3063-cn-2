@@ -21,41 +21,45 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential ccache ecj fastjar file g++ gawk gettext git java-propose-classpath libelf-dev libncurses5-dev libncursesw5-dev libssl-dev python3 python3-dev python3-setuptools python3-pip rsync subversion swig time xsltproc zlib1g-dev
 
-      # 【核心改变】直接克隆你自己的仓库作为编译源码，绝对不删任何东西！
       - name: Clone Your Custom OpenWrt Source
         run: |
-          # 克隆你自己的仓库
           git clone https://github.com/Chen-xicheng/openwrt-ruijie-rg-ma3063-cn-2.git openwrt
           cd openwrt
-          # 删除克隆下来的 .git 目录，避免与其内部的 git 操作冲突（只删这个隐藏文件夹，不影响你的代码）
           rm -rf .git 
 
       - name: Clone Argon Theme
         run: |
           cd openwrt/package
-          # 如果你仓库里已经有了，这一步会失败，但加了 || true 不会中断编译
           git clone https://github.com/jerrykuku/luci-theme-argon.git || true
 
       - name: Configure Build
         run: |
           cd openwrt
-          
-          echo "=== 强制设置 ARCH 环境变量 ==="
           export ARCH=aarch64
           
-          echo "=== 更新 feeds 并安装基础包 ==="
+          echo "=== 更新 feeds ==="
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+
+          echo "=== 清理可能存在的错误默认配置 ==="
+          # 删除可能自带的错误配置，确保从零开始
+          rm -f .config
+
+          echo "=== 强制锁定目标设备为锐捷 MA3063 ==="
+          # 写入基础平台
+          echo "CONFIG_TARGET_qualcommax=y" > .config
+          echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
+          # 只选中锐捷 MA3063
+          echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
+          # 显式禁用那个错误的 CMCC 设备
+          echo "# CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_cmcc_mr3000d-ci is not set" >> .config
 
           echo "=== 生成基础配置 ==="
           make defconfig
 
-          echo "=== 写入目标设备与架构配置 ==="
-          echo 'CONFIG_TARGET_qualcommax=y' >> .config
-          echo 'CONFIG_TARGET_qualcommax_ipq50xx=y' >> .config
-          echo 'CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y' >> .config
-          echo 'CONFIG_ARCH="aarch64"' >> .config
-          echo 'CONFIG_TARGET_ARCH="aarch64"' >> .config
+          # 验证是否选中了正确的设备
+          echo "=== 验证设备选择 ==="
+          grep "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_" .config
 
           echo "=== 追加插件和主题配置 ==="
           echo 'CONFIG_PACKAGE_luci=y' >> .config
@@ -63,7 +67,7 @@ jobs:
           echo 'CONFIG_PACKAGE_luci-theme-argon=y' >> .config
           echo 'CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y' >> .config
           echo 'CONFIG_PACKAGE_luci-app-ttyd=y' >> .config
-
+          
           echo "=== 刷新配置 ==="
           make defconfig
           
@@ -75,7 +79,6 @@ jobs:
           cd openwrt
           export ARCH=aarch64
           echo "开始编译固件，这可能需要 1-3 小时..."
-          # 去掉了 dirclean，直接编译
           make -j$(nproc) || make -j1 V=s
 
       - name: Upload Firmware
@@ -83,8 +86,8 @@ jobs:
         with:
           name: OpenWrt-RG-MA3063-Firmware
           path: |
-            openwrt/bin/targets/qualcommax/ipq50xx/*.bin
-            openwrt/bin/targets/qualcommax/ipq50xx/*.img
-            openwrt/bin/targets/qualcommax/ipq50xx/*.itb
-            openwrt/bin/targets/qualcommax/ipq50xx/*.manifest
-          if-no-files-found: warn
+            # 明确指定只上传锐捷 MA3063 的固件！
+            openwrt/bin/targets/qualcommax/ipq50xx/*ruijie_rg-ma3063*.bin
+            openwrt/bin/targets/qualcommax/ipq50xx/*ruijie_rg-ma3063*.itb
+            openwrt/bin/targets/qualcommax/ipq50xx/*ruijie_rg-ma3063*.manifest
+          if-no-files-found: error
