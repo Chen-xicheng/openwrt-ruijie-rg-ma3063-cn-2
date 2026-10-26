@@ -44,24 +44,21 @@ jobs:
           echo "=== 彻底清理旧配置 ==="
           rm -f .config
 
-          echo "=== 强制锁定目标设备为锐捷 MA3063 ==="
+          echo "=== 优先锁定目标设备为锐捷 MA3063（防止被 CMCC 默认配置覆盖）==="
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
-          
-          # 强制指定锐捷设备，并重写 PROFILE 变量！
           echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
-          echo "CONFIG_TARGET_PROFILE=\"DEVICE_ruijie_rg-ma3063\"" >> .config
           
-          # 显式禁用 CMCC，斩草除根
+          # 【关键】将 PROFILE 显式指向锐捷，并在同一行禁用 CMCC
+          echo "CONFIG_TARGET_PROFILE=\"DEVICE_ruijie_rg-ma3063\"" >> .config
           echo "# CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_cmcc_mr3000d-ci is not set" >> .config
 
           echo "=== 生成配置 ==="
           make defconfig
 
           echo "=== 终极防御：检查是否真的选对设备 ==="
-          if grep -q "CONFIG_TARGET_PROFILE=\"DEVICE_cmcc_mr3000d-ci\"" .config; then
+          if grep -q "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_cmcc_mr3000d-ci=y" .config; then
             echo "❌ 致命错误：系统依然选择了 CMCC 固件！"
-            echo "👉 这说明你仓库里的设备名称不是 ruijie_rg-ma3063。"
             echo "以下是系统识别到的所有设备列表："
             grep "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_" .config | grep "=y"
             exit 1
@@ -77,8 +74,8 @@ jobs:
           echo 'CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y' >> .config
           echo 'CONFIG_PACKAGE_luci-app-ttyd=y' >> .config
           
-          echo "=== 刷新配置 ==="
-          make defconfig
+          echo "=== 刷新配置（跳过递归依赖检查，避免 CMCC 被强制选回）==="
+          make defconfig KCONFIG_SKIP_DEPENDENCY_CHECK=1
           
           echo "=== 预下载依赖包 ==="
           make download -j8
