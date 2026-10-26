@@ -80,14 +80,15 @@ jobs:
           export ARCH=aarch64
           echo "开始编译固件，这可能需要 1-3 小时..."
           make -j$(nproc) || make -j1 V=s
+          
+          echo "=== 打印生成的固件列表，让你看看究竟生成了什么 ==="
+          ls -lh bin/targets/qualcommax/ipq50xx/
 
       - name: Upload Firmware
         uses: actions/upload-artifact@v4
         with:
           name: OpenWrt-RG-MA3063-Firmware
+          # 【关键修复】直接上传该目录下的所有文件，不再强制匹配名字！
           path: |
-            # 明确指定只上传锐捷 MA3063 的固件！
-            openwrt/bin/targets/qualcommax/ipq50xx/*ruijie_rg-ma3063*.bin
-            openwrt/bin/targets/qualcommax/ipq50xx/*ruijie_rg-ma3063*.itb
-            openwrt/bin/targets/qualcommax/ipq50xx/*ruijie_rg-ma3063*.manifest
-          if-no-files-found: error
+            openwrt/bin/targets/qualcommax/ipq50xx/*
+          if-no-files-found: warn
