@@ -65,69 +65,37 @@ jobs:
       - name: Configure Build
         run: |
           cd openwrt
-          
-          # 1. 手动创建 site/aarch64 文件，内容参考 OpenWrt 官方定义
-          echo "=== 手动创建 include/site/aarch64 ==="
+          echo "=== 使用 Base64 安全创建 site 文件 ==="
           mkdir -p include/site
-          cat > include/site/aarch64 << 'EOF'
-#!/bin/sh
-. $TOPDIR/include/site/linux
-ac_cv_c_littleendian=${ac_cv_c_littleendian=yes}
-ac_cv_c_bigendian=${ac_cv_c_bigendian=no}
-ac_cv_sizeof___int64=8
-ac_cv_sizeof_char=1
-ac_cv_sizeof_int=4
-ac_cv_sizeof_int16_t=2
-ac_cv_sizeof_int32_t=4
-ac_cv_sizeof_int64_t=8
-ac_cv_sizeof_long_int=8
-ac_cv_sizeof_long_long=8
-ac_cv_sizeof_long=8
-ac_cv_sizeof_off_t=8
-ac_cv_sizeof_short_int=2
-ac_cv_sizeof_short=2
-ac_cv_sizeof_size_t=8
-ac_cv_sizeof_ssize_t=8
-ac_cv_sizeof_u_int16_t=2
-ac_cv_sizeof_u_int32_t=4
-ac_cv_sizeof_u_int64_t=8
-ac_cv_sizeof_uint16_t=2
-ac_cv_sizeof_uint32_t=4
-ac_cv_sizeof_uint64_t=8
-ac_cv_sizeof_unsigned_int=4
-ac_cv_sizeof_unsigned_long=8
-ac_cv_sizeof_unsigned_long_long=8
-ac_cv_sizeof_unsigned_short=2
-ac_cv_sizeof_void_p=8
-EOF
-          echo "文件创建成功："
-          ls -l include/site/aarch64
-
-          # 2. 显式导出 ARCH 变量
+          echo "IyEvYmluL3NoCi4gJFNPVERJUi9pbmNsdWRlL3NpdGUvbGludXgKYWNfY3ZfY19saXR0bGVlbmRpYW49JHthY19jdl9jX2xpdHRsZWVuZGlhbj15ZXN9CmFjX2N2X2NfYmlnZW5kaWFuPSR7YWNfY3ZfY19iaWdlbmRpYW49bm99CmFjX2N2X3NpemVvZl9fX2ludDY0PTgKYWNfY3Zfc2l6ZW9mX2NoYXI9MQphY19jdl9zaXplb2ZfaW50PTQKYWNfY3Zfc2l6ZW9mX2ludDE2X3Q9MgphY19jdl9zaXplb2ZfaW50MzJfdD00CmFjX2N2X3NpemVvZl9pbnQ2NF90PTgKYWNfY3Zfc2l6ZW9mX2xvbmdfaW50PTgKYWNfY3Zfc2l6ZW9mX2xvbmdfbG9uZz04CmFjX2N2X3NpemVvZl9sb25nPTgKYWNfY3Zfc2l6ZW9mX29mZl90PTgKYWNfY3Zfc2l6ZW9mX3Nob3J0X2ludD0yCmFjX2N2X3NpemVvZl9zaG9ydD0yCmFjX2N2X3NpemVvZl9zaXplX3Q9OAphY19jdl9zaXplb2Zfc3NpemVfdD04CmFjX2N2X3NpemVvZl91X2ludDE2X3Q9MgphY19jdl9zaXplb2ZfdV9pbnQzMl90PTQKYWNfY3Zfc2l6ZW9mX3VfaW50NjRfdD04CmFjX2N2X3NpemVvZl91aW50MTZfdD0yCmFjX2N2X3NpemVvZl91aW50MzJfdD00CmFjX2N2X3NpemVvZl91aW50NjRfdD04CmFjX2N2X3NpemVvZl91bnNpZ25lZF9pbnQ9NAphY19jdl9zaXplb2ZfdW5zaWduZWRfbG9uZz04CmFjX2N2X3NpemVvZl91bnNpZ25lZF9sb25nX2xvbmc9OAphY19jdl9zaXplb2ZfdW5zaWduZWRfc2hvcnQ9MgphY19jdl9zaXplb2Zfdm9pZF9wPTgK" | base64 -d > include/site/aarch64
+          chmod +x include/site/aarch64
+          
           echo "=== 设置 ARCH 环境变量 ==="
           export ARCH=aarch64
-          echo "当前 ARCH: $ARCH"
 
-          # 3. 更新 feeds 并生成基础配置
+          echo "=== 更新 feeds ==="
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+          
+          echo "=== 写入基础目标配置 ==="
+          echo 'CONFIG_TARGET_qualcommax=y' > .config
+          echo 'CONFIG_TARGET_qualcommax_ipq50xx=y' >> .config
+          echo 'CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y' >> .config
+          
+          echo "=== 生成默认配置 ==="
           make defconfig
-
-          # 4. 在 .config 中显式写入架构和目标平台配置
-          echo "=== 追加目标平台及插件配置 ==="
-          echo "CONFIG_ARCH=\"aarch64\"" >> .config
-          echo "CONFIG_TARGET_ARCH=\"aarch64\"" >> .config
-          echo "CONFIG_TARGET_qualcommax=y" >> .config
-          echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
-          echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
-          echo "CONFIG_PACKAGE_luci=y" >> .config
-          echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
-          echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
-          echo "CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
-
-          # 5. 再次 defconfig 使新增的 .config 生效
+          
+          echo "=== 追加插件和主题 ==="
+          echo 'CONFIG_PACKAGE_luci=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-theme-argon=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-app-ttyd=y' >> .config
+          
+          echo "=== 刷新配置 ==="
           make defconfig
+          
+          echo "=== 预下载依赖包 ==="
           make download -j8
 
       - name: Clean before compile
@@ -138,6 +106,7 @@ EOF
       - name: Compile Firmware
         run: |
           cd openwrt
+          export ARCH=aarch64
           echo "开始编译固件，这可能需要 1-3 小时..."
           make -j$(nproc) || make -j1 V=s
 
