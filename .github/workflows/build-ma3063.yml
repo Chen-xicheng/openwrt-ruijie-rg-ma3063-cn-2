@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       openwrt_commit:
-        description: 'OpenWrt commit hash to build against'
+        description: 'OpenWrt commit hash'
         required: true
         default: '486b4a4b3ede480635a185234fc624c969426f13'
   push:
@@ -13,6 +13,7 @@ on:
     paths:
       - '.github/workflows/build-ma3063.yml'
       - 'patches/**'
+      - 'target/**'
 
 jobs:
   build:
@@ -33,25 +34,27 @@ jobs:
           cd openwrt
           git checkout ${{ github.event.inputs.openwrt_commit }}
 
-      - name: Apply Device Patch
+      - name: Apply Device Patch or Copy Target
         run: |
           cd openwrt
-          echo "=== 寻找补丁文件 ==="
+          echo "=== 1. 寻找并应用补丁 ==="
+          PATCH_FOUND=0
           if [ -f "../patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch" ]; then
-            PATCH_FILE="../patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch"
-          elif [ -f "../0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch" ]; then
-            PATCH_FILE="../0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch"
-          else
-            PATCH_FILE=$(find .. -maxdepth 3 -name "*ruijie*ma3063*.patch" -type f | head -n 1)
+            git apply "../patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch" && PATCH_FOUND=1
+          elif [ -f "patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch" ]; then
+            git apply "patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch" && PATCH_FOUND=1
+          fi
+          
+          echo "=== 2. 若未找到补丁，尝试直接复制 target 目录 ==="
+          if [ $PATCH_FOUND -eq 0 ] && [ -d "../target" ]; then
+            echo "未找到补丁，使用仓库自带的 target 目录..."
+            cp -r ../target/* ./target/
+            PATCH_FOUND=1
           fi
 
-          if [ -z "$PATCH_FILE" ]; then
-            echo "❌ 严重错误：未找到设备补丁文件！"
-            echo "请确认已将 0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch 上传至仓库的 patches/ 目录。"
+          if [ $PATCH_FOUND -eq 0 ]; then
+            echo "❌ 错误：既未找到补丁文件，仓库中也无 target 文件夹！"
             exit 1
-          else
-            echo "✅ 找到补丁: $PATCH_FILE"
-            git apply "$PATCH_FILE"
           fi
 
       - name: Clone Argon Theme
@@ -62,38 +65,25 @@ jobs:
       - name: Configure Build
         run: |
           cd openwrt
-          
-          echo "=== 关键步骤: 在配置前强制设置 ARCH 环境变量 ==="
           export ARCH=aarch64
-          
-          echo "=== 更新 feeds 并安装基础包 ==="
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-
-          echo "=== 生成基础配置 ==="
           make defconfig
-
-          echo "=== 写入目标设备与架构配置 ==="
+          
           echo 'CONFIG_TARGET_qualcommax=y' >> .config
           echo 'CONFIG_TARGET_qualcommax_ipq50xx=y' >> .config
           echo 'CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y' >> .config
           echo 'CONFIG_ARCH="aarch64"' >> .config
-          echo 'CONFIG_TARGET_ARCH="aarch64"' >> .config
-
-          echo "=== 再次执行 defconfig 使目标配置生效 ==="
+          
           make defconfig
-
-          echo "=== 追加插件和主题配置 ==="
+          
           echo 'CONFIG_PACKAGE_luci=y' >> .config
           echo 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' >> .config
           echo 'CONFIG_PACKAGE_luci-theme-argon=y' >> .config
           echo 'CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y' >> .config
           echo 'CONFIG_PACKAGE_luci-app-ttyd=y' >> .config
-
-          echo "=== 最终刷新配置 ==="
-          make defconfig
           
-          echo "=== 预下载依赖包 ==="
+          make defconfig
           make download -j8
 
       - name: Clean before compile
@@ -105,7 +95,6 @@ jobs:
         run: |
           cd openwrt
           export ARCH=aarch64
-          echo "开始编译固件，这可能需要 1-3 小时..."
           make -j$(nproc) || make -j1 V=s
 
       - name: Upload Firmware
