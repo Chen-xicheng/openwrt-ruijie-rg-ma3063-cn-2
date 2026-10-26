@@ -37,13 +37,10 @@ jobs:
         run: |
           cd openwrt
           echo "=== 寻找补丁文件 ==="
-          # 优先检查仓库根目录 patches 文件夹
           if [ -f "../patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch" ]; then
             PATCH_FILE="../patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch"
-          # 其次检查仓库根目录
           elif [ -f "../0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch" ]; then
             PATCH_FILE="../0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch"
-          # 最后动态搜索
           else
             PATCH_FILE=$(find .. -maxdepth 3 -name "*ruijie*ma3063*.patch" -type f | head -n 1)
           fi
@@ -77,11 +74,9 @@ jobs:
           make defconfig
 
           echo "=== 写入目标设备与架构配置 ==="
-          # 先写入目标平台，确保 defconfig 识别到 qualcommax
           echo 'CONFIG_TARGET_qualcommax=y' >> .config
           echo 'CONFIG_TARGET_qualcommax_ipq50xx=y' >> .config
           echo 'CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y' >> .config
-          # 强制写入架构，双保险
           echo 'CONFIG_ARCH="aarch64"' >> .config
           echo 'CONFIG_TARGET_ARCH="aarch64"' >> .config
 
@@ -89,7 +84,6 @@ jobs:
           make defconfig
 
           echo "=== 追加插件和主题配置 ==="
-          # 注意：主题依赖 luci，必须在 luci 之后写入
           echo 'CONFIG_PACKAGE_luci=y' >> .config
           echo 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' >> .config
           echo 'CONFIG_PACKAGE_luci-theme-argon=y' >> .config
