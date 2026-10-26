@@ -6,7 +6,7 @@ on:
       openwrt_commit:
         description: 'OpenWrt commit hash to build against'
         required: true
-        default: 'openwrt-24.10'
+        default: '486b4a4b3ede480635a185234fc624c969426f13'
   push:
     branches:
       - main
@@ -36,26 +36,21 @@ jobs:
             git checkout "$INPUT_REF"
           else
             git checkout openwrt-24.10 2>/dev/null || true
-            git checkout "$INPUT_REF" 2>/dev/null || { echo "Commit not found in openwrt-24.10, trying default branch..."; git checkout "$INPUT_REF"; }
+            git checkout "$INPUT_REF" 2>/dev/null || { echo "Commit not found, trying default branch..."; git checkout "$INPUT_REF"; }
           fi
 
-      - name: Apply Device Patch or Copy Target
+      - name: Apply Device Patch
         run: |
           cd openwrt
-          echo "=== 开始检查设备文件 ==="
-          if [ -d "../patches" ] && [ "$(ls -A ../patches/*.patch 2>/dev/null)" ]; then
-            echo "发现 patches 文件夹，准备应用补丁..."
-            for patch in ../patches/*.patch; do
-              echo "正在应用: $patch"
-              git apply "$patch" || echo "补丁应用失败: $patch"
-            done
-          elif [ -d "../target" ]; then
-            echo "未发现补丁，但发现了 target 文件夹，直接覆盖源码..."
-            cp -r ../target ./
+          echo "=== 应用设备补丁 ==="
+          # 根据您的README，补丁在仓库的 patches/ 目录下
+          if [ -f "../patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch" ]; then
+            git apply "../patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch"
+            echo "补丁应用成功。"
           else
-            echo "警告: 既没有找到补丁文件，也没有找到 target 文件夹！请检查仓库文件是否完整。"
+            echo "错误: 未找到补丁文件 ../patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch"
+            exit 1
           fi
-          echo "=== 设备文件处理完成 ==="
 
       - name: Clone Argon Theme
         run: |
@@ -65,27 +60,20 @@ jobs:
       - name: Configure Build
         run: |
           cd openwrt
-
-          echo "=== 从官方源码获取 aarch64 site 文件 ==="
-          # 从 OpenWrt 官方源码库获取对应版本的 aarch64 配置文件
-          wget -O include/site/aarch64 "https://raw.githubusercontent.com/openwrt/openwrt/openwrt-24.10/include/site/aarch64"
-          chmod +x include/site/aarch64
-          echo "文件已下载，检查内容前几行："
-          head -5 include/site/aarch64
-
-          echo "=== 设置 ARCH 环境变量 ==="
+          
+          echo "=== 关键步骤: 在配置前强制设置 ARCH 为 aarch64 ==="
           export ARCH=aarch64
-
-          echo "=== 更新 feeds ==="
+          
+          echo "=== 更新 feeds 并安装基础包 ==="
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          echo "=== 写入基础目标配置 ==="
+          echo "=== 写入目标设备配置 ==="
           echo 'CONFIG_TARGET_qualcommax=y' > .config
           echo 'CONFIG_TARGET_qualcommax_ipq50xx=y' >> .config
           echo 'CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y' >> .config
-
-          echo "=== 生成默认配置 ==="
+          
+          echo "=== 生成默认配置 (此时 ARCH 已设置，应能正确找到 site 文件) ==="
           make defconfig
 
           echo "=== 追加插件和主题 ==="
@@ -94,10 +82,10 @@ jobs:
           echo 'CONFIG_PACKAGE_luci-theme-argon=y' >> .config
           echo 'CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y' >> .config
           echo 'CONFIG_PACKAGE_luci-app-ttyd=y' >> .config
-
+          
           echo "=== 刷新配置 ==="
           make defconfig
-
+          
           echo "=== 预下载依赖包 ==="
           make download -j8
 
