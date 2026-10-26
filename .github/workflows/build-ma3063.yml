@@ -69,7 +69,12 @@ jobs:
           ./scripts/feeds install -a
           make defconfig
 
-          echo "=== 补全 aarch64 架构的 site 配置文件 ==="
+          echo "=== 强制指定架构并创建 site 配置文件 ==="
+          # 1. 强制设置 ARCH 变量，避免为空
+          echo 'CONFIG_ARCH="aarch64"' >> .config
+          echo 'CONFIG_TARGET_ARCH="aarch64"' >> .config
+
+          # 2. 创建缺失的 site 配置文件
           if [ ! -f "include/site/aarch64" ]; then
             mkdir -p include/site
             echo '#!/bin/sh' > include/site/aarch64
@@ -102,6 +107,9 @@ jobs:
             echo 'ac_cv_sizeof_unsigned_short=2' >> include/site/aarch64
             echo 'ac_cv_sizeof_void_p=8' >> include/site/aarch64
           fi
+
+          echo "=== 确认 site 文件已创建 ==="
+          ls -l include/site/aarch64
 
           echo "=== 追加目标平台及插件配置 ==="
           echo "CONFIG_TARGET_qualcommax=y" >> .config
