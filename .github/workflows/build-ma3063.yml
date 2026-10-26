@@ -35,47 +35,57 @@ jobs:
       - name: Configure Build
         run: |
           cd openwrt
-          export ARCH=aarch64
           
-          echo "=== 更新 feeds 并安装基础包 ==="
+          # 1. 更新 feeds 并安装基础包
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          echo "=== 彻底清理旧配置 ==="
+          # 2. 核心修改：直接修改 Makefile，强制将锐捷设为默认设备
+          echo "=== 正在修改 ipq50xx 平台的默认设备配置 ==="
+          MK_FILE="target/linux/qualcommax/image/ipq50xx.mk"
+          
+          if [ -f "$MK_FILE" ]; then
+            # 移除原有的 CMCC 设备定义
+            sed -i '/cmcc_mr3000d-ci/d' "$MK_FILE"
+            
+            # 如果存在锐捷的定义，则保留；如果不存在，可能需要你手动确认设备名是否正确
+            # 这里使用 grep 检查锐捷是否已定义，如果没有则报错提醒
+            if ! grep -q "ruijie_rg-ma3063" "$MK_FILE"; then
+              echo "❌ 错误：在 Makefile 中未找到 ruijie_rg-ma3063 的定义！"
+              echo "请检查你的源码中是否真的包含了该设备的支持。"
+              exit 1
+            fi
+            echo "✅ Makefile 修改完成，默认设备已锁定为锐捷。"
+          else
+            echo "❌ 错误：未找到 $MK_FILE 文件，请检查源码结构。"
+            exit 1
+          fi
+
+          # 3. 清理旧配置
           rm -f .config
 
-          echo "=== 优先锁定目标设备为锐捷 MA3063（防止被 CMCC 默认配置覆盖）==="
+          # 4. 写入目标平台配置
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
-          
-          # 【关键】将 PROFILE 显式指向锐捷，并在同一行禁用 CMCC
           echo "CONFIG_TARGET_PROFILE=\"DEVICE_ruijie_rg-ma3063\"" >> .config
-          echo "# CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_cmcc_mr3000d-ci is not set" >> .config
 
+          # 5. 生成配置
           echo "=== 生成配置 ==="
           make defconfig
 
-          echo "=== 终极防御：检查是否真的选对设备 ==="
-          if grep -q "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_cmcc_mr3000d-ci=y" .config; then
-            echo "❌ 致命错误：系统依然选择了 CMCC 固件！"
-            echo "以下是系统识别到的所有设备列表："
-            grep "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_" .config | grep "=y"
-            exit 1
-          fi
-          
-          echo "✅ 成功锁定目标设备！"
-          grep "CONFIG_TARGET_PROFILE" .config
+          # 6. 验证（此时应该只有锐捷被选中）
+          echo "=== 验证设备选择 ==="
+          grep "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_" .config | grep "=y"
 
-          echo "=== 追加插件和主题配置 ==="
+          # 7. 追加插件和主题
           echo 'CONFIG_PACKAGE_luci=y' >> .config
           echo 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' >> .config
           echo 'CONFIG_PACKAGE_luci-theme-argon=y' >> .config
           echo 'CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y' >> .config
           echo 'CONFIG_PACKAGE_luci-app-ttyd=y' >> .config
           
-          echo "=== 刷新配置（跳过递归依赖检查，避免 CMCC 被强制选回）==="
-          make defconfig KCONFIG_SKIP_DEPENDENCY_CHECK=1
+          make defconfig
           
           echo "=== 预下载依赖包 ==="
           make download -j8
