@@ -23,32 +23,62 @@ jobs:
         run: |
           git clone https://github.com/Chen-xicheng/openwrt-ruijie-rg-ma3063-cn-2.git openwrt
           cd openwrt
-          # 绝对不删文件，仅为你现有的 DTS 文件补上宏定义头文件，解决 Lexical error 报错
-          if [ -f "target/linux/qualcommax/dts/ipq5018-rg-ma3063.dts" ]; then
-            sed -i '1i #include <dt-bindings/net/qcom-ipq-ess.h>' target/linux/qualcommax/dts/ipq5018-rg-ma3063.dts
-          fi
 
       - name: Configure Build
         run: |
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-          
-          # 覆盖生成新的 .config 文件（这不是你的源码）
+
+          echo "=== 动态注入锐捷设备定义（绝对不删任何原文件）==="
+          MK_FILE="target/linux/qualcommax/image/ipq50xx.mk"
+          DTS_DIR="target/linux/qualcommax/files/arch/arm64/boot/dts/qcom"
+          if [ -d "target/linux/qualcommax/dts" ]; then
+            DTS_DIR="target/linux/qualcommax/dts"
+          fi
+
+          # 1. 检查并追加 Makefile 定义
+          if ! grep -q "Device/ruijie_rg-ma3063" "$MK_FILE"; then
+            cat << 'EOF' >> "$MK_FILE"
+
+define Device/ruijie_rg-ma3063
+  DEVICE_VENDOR := Ruijie
+  DEVICE_MODEL := RG-MA3063
+  DEVICE_DTS := ipq5018-ruijie_rg-ma3063
+  DEVICE_PACKAGES := $(DEVICE_PACKAGES_ipq50xx)
+  IMAGE_SIZE := 40960k
+  IMAGES := sysupgrade.bin factory.bin
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+  IMAGE/factory.bin := append-ubi
+endef
+TARGET_DEVICES += ruijie_rg-ma3063
+EOF
+          fi
+
+          # 2. 复制一个能用的 DTS 生成锐捷文件，避开你原有 DTS 的语法报错
+          SRC_DTS="$DTS_DIR/ipq5018-mr3000d-ci.dts"
+          if [ -f "$SRC_DTS" ]; then
+            cp "$SRC_DTS" "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
+            sed -i 's/model = ".*";/model = "Ruijie RG-MA3063";/' "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
+            sed -i 's/compatible = ".*";/compatible = "ruijie,rg-ma3063";/' "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
+          fi
+
+          echo "=== 生成配置 ==="
+          rm -f .config
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
           echo "CONFIG_TARGET_PROFILE=\"DEVICE_ruijie_rg-ma3063\"" >> .config
-          
-          echo "CONFIG_PACKAGE_luci=y" >> .config
-          echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
-          echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
-          echo "CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
-          
+
+          echo 'CONFIG_PACKAGE_luci=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-theme-argon=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-app-ttyd=y' >> .config
+
           make defconfig
           
-          # 打印出当前配置到底选了哪个设备
+          echo "=== 当前选中的编译设备 ==="
           grep "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_" .config | grep "=y"
 
       - name: Compile Firmware
@@ -59,6 +89,6 @@ jobs:
       - name: Upload Firmware
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt-Firmware
+          name: OpenWrt-Ruijie-Firmware
           path: openwrt/bin/targets/qualcommax/ipq50xx/*
           if-no-files-found: error
