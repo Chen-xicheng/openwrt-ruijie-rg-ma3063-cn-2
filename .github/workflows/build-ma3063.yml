@@ -39,33 +39,35 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          echo "=== 动态定位并适配 DTS 设备定义 ==="
-          MK_FILE="target/linux/qualcommax/image/ipq50xx.mk"
+          echo "=== 修复 DTS 文件中的宏定义与节点引用 ==="
           DTS_DIR="target/linux/qualcommax/files/arch/arm64/boot/dts/qcom"
-          if [ -d "target/linux/qualcommax/dts" ]; then
-            DTS_DIR="target/linux/qualcommax/dts"
+          DTS_FILE="$DTS_DIR/ipq5018-ruijie-rg-ma3063.dts"
+
+          # 1. 复制一个已知可用的 DTS 作为基础模板
+          if [ -f "$DTS_DIR/ipq5018-spnmx56.dts" ]; then
+            cp "$DTS_DIR/ipq5018-spnmx56.dts" "$DTS_FILE"
+          elif [ -f "$DTS_DIR/ipq5018-mr3000d-ci.dts" ]; then
+            cp "$DTS_DIR/ipq5018-mr3000d-ci.dts" "$DTS_FILE"
           fi
 
-          TARGET_DEV="ruijie_rg-ma3063"
-          SRC_DEV="cmcc_mr3000d-ci"
-          if grep -q "ruijie_rg-ma3063" "$MK_FILE"; then
-            TARGET_DEV="ruijie_rg-ma3063"
-          else
-            sed -i 's/cmcc_mr3000d-ci/ruijie_rg-ma3063/g' "$MK_FILE"
-            sed -i 's/CMCC MR3000D-CI/Ruijie RG-MA3063/g' "$MK_FILE"
+          # 2. 确保包含了宏定义头文件
+          if ! grep -q 'qcom-ipq-ess.h' "$DTS_FILE"; then
+            sed -i '1i #include <dt-bindings/net/qcom-ipq-ess.h>' "$DTS_FILE"
           fi
 
-          if [ -f "$DTS_DIR/ipq5018-mr3000d-ci.dts" ]; then
-            cp "$DTS_DIR/ipq5018-mr3000d-ci.dts" "$DTS_DIR/ipq5018-ruijie-rg-ma3063.dts"
-            sed -i 's/model = "CMCC MR3000D-CI"/model = "Ruijie RG-MA3063"/g' "$DTS_DIR/ipq5018-ruijie-rg-ma3063.dts"
-            sed -i 's/compatible = "cmcc,mr3000d-ci"/compatible = "ruijie,rg-ma3063"/g' "$DTS_DIR/ipq5018-ruijie-rg-ma3063.dts"
-          fi
+          # 3. 修正 model 和 compatible 属性
+          sed -i 's/model = ".*";/model = "Ruijie RG-MA3063";/' "$DTS_FILE"
+          sed -i 's/compatible = ".*";/compatible = "ruijie,rg-ma3063";/' "$DTS_FILE"
 
+          # 4. 确保 switch、dp1、dp2 节点存在（如果模板中没有，则从其他文件补充）
+          # 这里依赖模板文件本身包含这些节点，如果模板文件缺失，则需要手动定义
+
+          echo "=== 生成配置文件 ==="
           rm -f .config
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
-          echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_${TARGET_DEV}=y" >> .config
-          echo "CONFIG_TARGET_PROFILE=\"DEVICE_${TARGET_DEV}\"" >> .config
+          echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
+          echo "CONFIG_TARGET_PROFILE=\"DEVICE_ruijie_rg-ma3063\"" >> .config
 
           echo 'CONFIG_PACKAGE_luci=y' >> .config
           echo 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' >> .config
