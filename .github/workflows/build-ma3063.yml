@@ -30,32 +30,28 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          echo "=== 动态注入锐捷设备定义（绝对不删任何原文件）==="
+          echo "=== 动态注入锐捷设备定义（绝不删除原文件）==="
           MK_FILE="target/linux/qualcommax/image/ipq50xx.mk"
+          if ! grep -q "Device/ruijie_rg-ma3063" "$MK_FILE"; then
+            echo "" >> "$MK_FILE"
+            echo "define Device/ruijie_rg-ma3063" >> "$MK_FILE"
+            echo "  DEVICE_VENDOR := Ruijie" >> "$MK_FILE"
+            echo "  DEVICE_MODEL := RG-MA3063" >> "$MK_FILE"
+            echo "  DEVICE_DTS := ipq5018-ruijie_rg-ma3063" >> "$MK_FILE"
+            echo "  DEVICE_PACKAGES := \$(DEVICE_PACKAGES_ipq50xx)" >> "$MK_FILE"
+            echo "  IMAGE_SIZE := 40960k" >> "$MK_FILE"
+            echo "  IMAGES := sysupgrade.bin factory.bin" >> "$MK_FILE"
+            echo "  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata" >> "$MK_FILE"
+            echo "  IMAGE/factory.bin := append-ubi" >> "$MK_FILE"
+            echo "endef" >> "$MK_FILE"
+            echo "TARGET_DEVICES += ruijie_rg-ma3063" >> "$MK_FILE"
+          fi
+
+          echo "=== 复制 DTS 避开语法报错 ==="
           DTS_DIR="target/linux/qualcommax/files/arch/arm64/boot/dts/qcom"
           if [ -d "target/linux/qualcommax/dts" ]; then
             DTS_DIR="target/linux/qualcommax/dts"
           fi
-
-          # 1. 检查并追加 Makefile 定义
-          if ! grep -q "Device/ruijie_rg-ma3063" "$MK_FILE"; then
-            cat << 'EOF' >> "$MK_FILE"
-
-define Device/ruijie_rg-ma3063
-  DEVICE_VENDOR := Ruijie
-  DEVICE_MODEL := RG-MA3063
-  DEVICE_DTS := ipq5018-ruijie_rg-ma3063
-  DEVICE_PACKAGES := $(DEVICE_PACKAGES_ipq50xx)
-  IMAGE_SIZE := 40960k
-  IMAGES := sysupgrade.bin factory.bin
-  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
-  IMAGE/factory.bin := append-ubi
-endef
-TARGET_DEVICES += ruijie_rg-ma3063
-EOF
-          fi
-
-          # 2. 复制一个能用的 DTS 生成锐捷文件，避开你原有 DTS 的语法报错
           SRC_DTS="$DTS_DIR/ipq5018-mr3000d-ci.dts"
           if [ -f "$SRC_DTS" ]; then
             cp "$SRC_DTS" "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
@@ -63,22 +59,20 @@ EOF
             sed -i 's/compatible = ".*";/compatible = "ruijie,rg-ma3063";/' "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
           fi
 
-          echo "=== 生成配置 ==="
-          rm -f .config
+          echo "=== 生成 .config ==="
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
           echo "CONFIG_TARGET_PROFILE=\"DEVICE_ruijie_rg-ma3063\"" >> .config
-
-          echo 'CONFIG_PACKAGE_luci=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-theme-argon=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-app-ttyd=y' >> .config
-
+          echo "CONFIG_PACKAGE_luci=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
+          echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
+          
           make defconfig
           
-          echo "=== 当前选中的编译设备 ==="
+          echo "=== 验证当前选中的设备 ==="
           grep "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_" .config | grep "=y"
 
       - name: Compile Firmware
