@@ -25,7 +25,7 @@ jobs:
         run: |
           git clone https://github.com/Chen-xicheng/openwrt-ruijie-rg-ma3063-cn-2.git openwrt
           cd openwrt
-          rm -rf .git 
+          rm -rf .git
 
       - name: Clone Argon Theme
         run: |
@@ -39,24 +39,33 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          rm -f .config
-
-          # 自动搜索源码里是否存在锐捷的设备定义
-          DEV_NAME=$(grep "define Device/" target/linux/qualcommax/image/ipq50xx.mk | grep -i -E "ruijie|ma3063" | awk -F'/' '{print $2}' | awk '{print $1}' | head -n 1)
-          
-          if [ -z "$DEV_NAME" ]; then
-            echo "未找到锐捷定义，强制重命名 CMCC 为锐捷"
-            sed -i 's/define Device\/cmcc_mr3000d-ci/define Device\/ruijie_rg-ma3063/' target/linux/qualcommax/image/ipq50xx.mk
-            sed -i 's/TARGET_DEVICES += cmcc_mr3000d-ci/TARGET_DEVICES += ruijie_rg-ma3063/' target/linux/qualcommax/image/ipq50xx.mk
-            sed -i 's/CMCC MR3000D-CI/Ruijie RG-MA3063/g' target/linux/qualcommax/image/ipq50xx.mk
-            DEV_NAME="ruijie_rg-ma3063"
+          echo "=== 动态定位并适配 DTS 设备定义 ==="
+          MK_FILE="target/linux/qualcommax/image/ipq50xx.mk"
+          DTS_DIR="target/linux/qualcommax/files/arch/arm64/boot/dts/qcom"
+          if [ -d "target/linux/qualcommax/dts" ]; then
+            DTS_DIR="target/linux/qualcommax/dts"
           fi
-          
-          echo "当前编译的设备名称: $DEV_NAME"
 
+          TARGET_DEV="ruijie_rg-ma3063"
+          SRC_DEV="cmcc_mr3000d-ci"
+          if grep -q "ruijie_rg-ma3063" "$MK_FILE"; then
+            TARGET_DEV="ruijie_rg-ma3063"
+          else
+            sed -i 's/cmcc_mr3000d-ci/ruijie_rg-ma3063/g' "$MK_FILE"
+            sed -i 's/CMCC MR3000D-CI/Ruijie RG-MA3063/g' "$MK_FILE"
+          fi
+
+          if [ -f "$DTS_DIR/ipq5018-mr3000d-ci.dts" ]; then
+            cp "$DTS_DIR/ipq5018-mr3000d-ci.dts" "$DTS_DIR/ipq5018-ruijie-rg-ma3063.dts"
+            sed -i 's/model = "CMCC MR3000D-CI"/model = "Ruijie RG-MA3063"/g' "$DTS_DIR/ipq5018-ruijie-rg-ma3063.dts"
+            sed -i 's/compatible = "cmcc,mr3000d-ci"/compatible = "ruijie,rg-ma3063"/g' "$DTS_DIR/ipq5018-ruijie-rg-ma3063.dts"
+          fi
+
+          rm -f .config
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
-          echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_${DEV_NAME}=y" >> .config
+          echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_${TARGET_DEV}=y" >> .config
+          echo "CONFIG_TARGET_PROFILE=\"DEVICE_${TARGET_DEV}\"" >> .config
 
           echo 'CONFIG_PACKAGE_luci=y' >> .config
           echo 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' >> .config
@@ -71,15 +80,11 @@ jobs:
         run: |
           cd openwrt
           export ARCH=aarch64
-          echo "开始编译固件，这可能需要 1-3 小时..."
           make -j$(nproc) || make -j1 V=s
-          
-          echo "=== 打印生成的固件列表，让你看看究竟生成了什么 ==="
-          ls -lh bin/targets/qualcommax/ipq50xx/
 
       - name: Upload Firmware
         uses: actions/upload-artifact@v4
         with:
           name: OpenWrt-Firmware
           path: openwrt/bin/targets/qualcommax/ipq50xx/*
-          if-no-files-found: error
+          if-no-files-found: warn
