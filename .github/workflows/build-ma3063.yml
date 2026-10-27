@@ -39,14 +39,20 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          rm -f .config
+          # 强行把源码里 CMCC 的设备定义替换为锐捷，复制 DTS 文件
+          sed -i 's/cmcc_mr3000d-ci/ruijie_rg-ma3063/g' target/linux/qualcommax/image/ipq50xx.mk
+          sed -i 's/CMCC MR3000D-CI/Ruijie RG-MA3063/g' target/linux/qualcommax/image/ipq50xx.mk
+          
+          cp target/linux/qualcommax/dts/cmcc_mr3000d-ci.dts target/linux/qualcommax/dts/ruijie_rg-ma3063.dts
 
+          # 彻底清理，强制写入目标配置
+          rm -f .config
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
           echo "CONFIG_TARGET_PROFILE=\"DEVICE_ruijie_rg-ma3063\"" >> .config
-          echo "# CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_cmcc_mr3000d-ci is not set" >> .config
 
+          # 添加你需要的插件
           echo 'CONFIG_PACKAGE_luci=y' >> .config
           echo 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' >> .config
           echo 'CONFIG_PACKAGE_luci-theme-argon=y' >> .config
@@ -69,8 +75,6 @@ jobs:
       - name: Upload Firmware
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt-RG-MA3063-Firmware
-          # 【关键修复】直接上传该目录下的所有文件，不再强制匹配名字！
-          path: |
-            openwrt/bin/targets/qualcommax/ipq50xx/*
-          if-no-files-found: warn
+          name: OpenWrt-Firmware
+          path: openwrt/bin/targets/qualcommax/ipq50xx/*
+          if-no-files-found: error
