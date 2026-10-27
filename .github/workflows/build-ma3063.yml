@@ -39,20 +39,25 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          # 强行把源码里 CMCC 的设备定义替换为锐捷，复制 DTS 文件
-          sed -i 's/cmcc_mr3000d-ci/ruijie_rg-ma3063/g' target/linux/qualcommax/image/ipq50xx.mk
-          sed -i 's/CMCC MR3000D-CI/Ruijie RG-MA3063/g' target/linux/qualcommax/image/ipq50xx.mk
-          
-          cp target/linux/qualcommax/dts/cmcc_mr3000d-ci.dts target/linux/qualcommax/dts/ruijie_rg-ma3063.dts
-
-          # 彻底清理，强制写入目标配置
           rm -f .config
+
+          # 自动搜索源码里是否存在锐捷的设备定义
+          DEV_NAME=$(grep "define Device/" target/linux/qualcommax/image/ipq50xx.mk | grep -i -E "ruijie|ma3063" | awk -F'/' '{print $2}' | awk '{print $1}' | head -n 1)
+          
+          if [ -z "$DEV_NAME" ]; then
+            echo "未找到锐捷定义，强制重命名 CMCC 为锐捷"
+            sed -i 's/define Device\/cmcc_mr3000d-ci/define Device\/ruijie_rg-ma3063/' target/linux/qualcommax/image/ipq50xx.mk
+            sed -i 's/TARGET_DEVICES += cmcc_mr3000d-ci/TARGET_DEVICES += ruijie_rg-ma3063/' target/linux/qualcommax/image/ipq50xx.mk
+            sed -i 's/CMCC MR3000D-CI/Ruijie RG-MA3063/g' target/linux/qualcommax/image/ipq50xx.mk
+            DEV_NAME="ruijie_rg-ma3063"
+          fi
+          
+          echo "当前编译的设备名称: $DEV_NAME"
+
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
-          echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
-          echo "CONFIG_TARGET_PROFILE=\"DEVICE_ruijie_rg-ma3063\"" >> .config
+          echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_${DEV_NAME}=y" >> .config
 
-          # 添加你需要的插件
           echo 'CONFIG_PACKAGE_luci=y' >> .config
           echo 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' >> .config
           echo 'CONFIG_PACKAGE_luci-theme-argon=y' >> .config
