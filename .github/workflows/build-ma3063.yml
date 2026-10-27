@@ -2,11 +2,18 @@ name: Build OpenWrt Firmware for Ruijie RG-MA3063
 
 on:
   workflow_dispatch:
+    inputs:
+      openwrt_commit:
+        description: 'OpenWrt commit hash to build against'
+        required: true
+        default: '486b4a4b3ede480635a185234fc624c969426f13'
   push:
     branches:
       - main
     paths:
       - '.github/workflows/build-ma3063.yml'
+      - 'patches/**'
+      - 'target/**'
 
 jobs:
   build:
@@ -21,11 +28,58 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential ccache ecj fastjar file g++ gawk gettext git java-propose-classpath libelf-dev libncurses5-dev libncursesw5-dev libssl-dev python3 python3-dev python3-setuptools python3-pip rsync subversion swig time xsltproc zlib1g-dev
 
-      - name: Clone Your Custom OpenWrt Source
+      - name: Clone OpenWrt Source
         run: |
-          git clone https://github.com/Chen-xicheng/openwrt-ruijie-rg-ma3063-cn-2.git openwrt
+          git clone https://github.com/openwrt/openwrt.git openwrt
           cd openwrt
-          rm -rf .git
+          INPUT_REF="${{ github.event.inputs.openwrt_commit }}"
+          if [[ "$INPUT_REF" == openwrt-* ]]; then
+            git checkout "$INPUT_REF"
+          else
+            git checkout openwrt-24.10 2>/dev/null || true
+            git checkout "$INPUT_REF" 2>/dev/null || { echo "Commit not found, trying default branch..."; git checkout "$INPUT_REF"; }
+          fi
+
+      - name: Apply Device Patch or Copy Target
+        run: |
+          cd openwrt
+          echo "=== 检查设备文件 ==="
+          PATCH_FOUND=0
+          if [ -f "../patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch" ]; then
+            git apply "../patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch" && PATCH_FOUND=1
+          fi
+          if [ $PATCH_FOUND -eq 0 ] && [ -d "../target" ]; then
+            echo "未找到补丁，使用仓库自带的 target 目录..."
+            cp -r ../target/* ./target/
+          fi
+
+          echo "=== 自动检测 DTS 目录与复制 ==="
+          TARGET_DTS_DIR="target/linux/qualcommax/files/arch/arm64/boot/dts/qcom"
+          if [ -d "target/linux/qualcommax/dts" ]; then
+            TARGET_DTS_DIR="target/linux/qualcommax/dts"
+          fi
+          
+          # 查找源码中或仓库里的锐捷 DTS 文件
+          SRC_DTS=""
+          for pattern in "target/linux/qualcommax/dts/ipq5018-ruijie-rg-ma3063.dts" "target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-ruijie-rg-ma3063.dts" "../target/linux/qualcommax/dts/ipq5018-ruijie-rg-ma3063.dts" "../target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-ruijie-rg-ma3063.dts"; do
+            if [ -f "$pattern" ]; then
+              SRC_DTS="$pattern"
+              break
+            fi
+          done
+
+          if [ -n "$SRC_DTS" ]; then
+            mkdir -p "$TARGET_DTS_DIR"
+            cp "$SRC_DTS" "$TARGET_DTS_DIR/ipq5018-ruijie-rg-ma3063.dts"
+            echo "DTS 文件已就绪: $TARGET_DTS_DIR/ipq5018-ruijie-rg-ma3063.dts"
+          else
+            echo "未找到锐捷专属 DTS，检查是否能复用基础机型文件..."
+            if [ -f "$TARGET_DTS_DIR/ipq5018-mr3000d-ci.dts" ]; then
+              cp "$TARGET_DTS_DIR/ipq5018-mr3000d-ci.dts" "$TARGET_DTS_DIR/ipq5018-ruijie-rg-ma3063.dts"
+              sed -i 's/model = ".*"/model = "Ruijie RG-MA3063"/' "$TARGET_DTS_DIR/ipq5018-ruijie-rg-ma3063.dts"
+              echo "已基于模板生成 DTS 文件。"
+            fi
+          fi
 
       - name: Clone Argon Theme
         run: |
@@ -35,34 +89,10 @@ jobs:
       - name: Configure Build
         run: |
           cd openwrt
-          
+          export ARCH=aarch64
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          echo "=== 修复 DTS 文件中的宏定义与节点引用 ==="
-          DTS_DIR="target/linux/qualcommax/files/arch/arm64/boot/dts/qcom"
-          DTS_FILE="$DTS_DIR/ipq5018-ruijie-rg-ma3063.dts"
-
-          # 1. 复制一个已知可用的 DTS 作为基础模板
-          if [ -f "$DTS_DIR/ipq5018-spnmx56.dts" ]; then
-            cp "$DTS_DIR/ipq5018-spnmx56.dts" "$DTS_FILE"
-          elif [ -f "$DTS_DIR/ipq5018-mr3000d-ci.dts" ]; then
-            cp "$DTS_DIR/ipq5018-mr3000d-ci.dts" "$DTS_FILE"
-          fi
-
-          # 2. 确保包含了宏定义头文件
-          if ! grep -q 'qcom-ipq-ess.h' "$DTS_FILE"; then
-            sed -i '1i #include <dt-bindings/net/qcom-ipq-ess.h>' "$DTS_FILE"
-          fi
-
-          # 3. 修正 model 和 compatible 属性
-          sed -i 's/model = ".*";/model = "Ruijie RG-MA3063";/' "$DTS_FILE"
-          sed -i 's/compatible = ".*";/compatible = "ruijie,rg-ma3063";/' "$DTS_FILE"
-
-          # 4. 确保 switch、dp1、dp2 节点存在（如果模板中没有，则从其他文件补充）
-          # 这里依赖模板文件本身包含这些节点，如果模板文件缺失，则需要手动定义
-
-          echo "=== 生成配置文件 ==="
           rm -f .config
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
@@ -87,6 +117,6 @@ jobs:
       - name: Upload Firmware
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt-Firmware
+          name: OpenWrt-RG-MA3063-Firmware
           path: openwrt/bin/targets/qualcommax/ipq50xx/*
           if-no-files-found: warn
