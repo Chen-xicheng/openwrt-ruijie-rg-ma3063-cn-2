@@ -426,3 +426,18 @@ define Device/zyxel_scr50axe
 		ipq-wifi-zyxel_scr50axe
 endef
 TARGET_DEVICES += zyxel_scr50axe
+
+define Device/ruijie_rg-ma3063
+  DEVICE_VENDOR := Ruijie
+  DEVICE_MODEL := RG-MA3063
+  DEVICE_DTS := ipq5018-ruijie_rg-ma3063
+  DEVICE_PACKAGES := $(DEVICE_PACKAGES_ipq50xx)
+  # 将 IMAGE_SIZE 调大，确保能容纳你的插件（可根据实际情况调整）
+  IMAGE_SIZE := 51200k
+  IMAGES := sysupgrade.bin factory.bin
+  # 简化 IMAGE/sysupgrade.bin 的生成规则，避免冲突
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+  # 确保 factory.bin 也能正常生成
+  IMAGE/factory.bin := append-ubi
+endef
+TARGET_DEVICES += ruijie_rg-ma3063
