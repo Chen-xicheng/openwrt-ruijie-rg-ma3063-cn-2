@@ -1,7 +1,10 @@
-name: Build OpenWrt Firmware for Ruijie RG-MA3063 (Debug)
+name: Build OpenWrt Firmware for Ruijie RG-MA3063
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
@@ -14,7 +17,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential ccache ecj fastjar file g++ gawk gettext git java-propose-classpath libelf-dev libncurses5-dev libncursesw5-dev libssl-dev python3 python3-dev python3-setuptools python3-pip rsync subversion swig time xsltproc zlib1g-dev
+          sudo apt-get install -y build-essential ccache ecj fastjar file g++ gawk gettext git java-propose-classpath libelf-dev libncurses5-dev libncursesw5-dev libssl-dev python3 python3-dev python3-setuptools python3-pip rsync subversion swig time xsltproc zlib1g-dev nodejs npm
 
       - name: Clone Your Repository
         run: |
@@ -27,32 +30,59 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          echo "=== 生成 .config ==="
+          echo "=== 暴力改名，强制让源码生成锐捷固件 ==="
+          MK_FILE="target/linux/qualcommax/image/ipq50xx.mk"
+          sed -i 's/cmcc_mr3000d-ci/ruijie_rg-ma3063/g' "$MK_FILE"
+          sed -i 's/CMCC MR3000D-CI/Ruijie RG-MA3063/g' "$MK_FILE"
+
+          DTS_DIR="target/linux/qualcommax/files/arch/arm64/boot/dts/qcom"
+          if [ -d "target/linux/qualcommax/dts" ]; then
+            DTS_DIR="target/linux/qualcommax/dts"
+          fi
+          
+          if [ -f "$DTS_DIR/ipq5018-mr3000d-ci.dts" ]; then
+            cp "$DTS_DIR/ipq5018-mr3000d-ci.dts" "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
+            sed -i 's/model = ".*";/model = "Ruijie RG-MA3063";/' "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
+          elif [ -f "$DTS_DIR/ipq5018-cmcc_mr3000d-ci.dts" ]; then
+            cp "$DTS_DIR/ipq5018-cmcc_mr3000d-ci.dts" "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
+            sed -i 's/model = ".*";/model = "Ruijie RG-MA3063";/' "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
+          fi
+
+          echo "=== 生成配置 ==="
           rm -f .config
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
           echo "CONFIG_TARGET_PROFILE=\"DEVICE_ruijie_rg-ma3063\"" >> .config
+          
           echo "CONFIG_PACKAGE_luci=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
           echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
-
+          
           make defconfig
-
-          echo "=== 验证当前选中的设备 ==="
-          grep "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_" .config | grep "=y"
+          make download -j8
 
       - name: Compile Firmware
         run: |
           cd openwrt
-          # 使用 -j1 V=s 来获取详细的错误日志，方便定位问题
-          make -j1 V=s
+          # 使用多线程快速编译，并将所有日志保存到文件，防止被截断
+          make -j$(nproc) > build.log 2>&1 || true
+          
+          # 检查是否真的生成了 .bin 文件
+          if ls bin/targets/qualcommax/ipq50xx/*ruijie_rg-ma3063*.bin 1> /dev/null 2>&1; then
+            echo "编译成功！固件已生成。"
+          else
+            echo "!!! 编译失败，以下是最后 100 行关键报错日志 !!!"
+            tail -n 100 build.log
+            exit 1
+          fi
 
       - name: Upload Firmware
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: OpenWrt-Ruijie-Firmware
           path: openwrt/bin/targets/qualcommax/ipq50xx/*
-          if-no-files-found: warn # 改为 warn，即使没找到文件也不让工作流失败，方便看日志
+          if-no-files-found: error
