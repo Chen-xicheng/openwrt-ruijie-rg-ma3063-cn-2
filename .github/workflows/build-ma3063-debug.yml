@@ -29,31 +29,11 @@ jobs:
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-
-          echo "=== 暴力改名，强制让源码生成锐捷固件 ==="
-          MK_FILE="target/linux/qualcommax/image/ipq50xx.mk"
-          sed -i 's/cmcc_mr3000d-ci/ruijie_rg-ma3063/g' "$MK_FILE"
-          sed -i 's/CMCC MR3000D-CI/Ruijie RG-MA3063/g' "$MK_FILE"
-
-          DTS_DIR="target/linux/qualcommax/files/arch/arm64/boot/dts/qcom"
-          if [ -d "target/linux/qualcommax/dts" ]; then
-            DTS_DIR="target/linux/qualcommax/dts"
-          fi
           
-          if [ -f "$DTS_DIR/ipq5018-mr3000d-ci.dts" ]; then
-            cp "$DTS_DIR/ipq5018-mr3000d-ci.dts" "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
-            sed -i 's/model = ".*";/model = "Ruijie RG-MA3063";/' "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
-          elif [ -f "$DTS_DIR/ipq5018-cmcc_mr3000d-ci.dts" ]; then
-            cp "$DTS_DIR/ipq5018-cmcc_mr3000d-ci.dts" "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
-            sed -i 's/model = ".*";/model = "Ruijie RG-MA3063";/' "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
-          fi
-
-          echo "=== 生成配置 ==="
           rm -f .config
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
-          echo "CONFIG_TARGET_PROFILE=\"DEVICE_ruijie_rg-ma3063\"" >> .config
           
           echo "CONFIG_PACKAGE_luci=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
@@ -67,20 +47,18 @@ jobs:
       - name: Compile Firmware
         run: |
           cd openwrt
-          # 使用多线程快速编译，并将所有日志保存到文件，防止被截断
-          make -j$(nproc) > build.log 2>&1 || true
+          # 保持 -j4 防内存溢出
+          make -j4 > build.log 2>&1 || true
           
-          # 检查是否真的生成了 .bin 文件
           if ls bin/targets/qualcommax/ipq50xx/*ruijie_rg-ma3063*.bin 1> /dev/null 2>&1; then
             echo "编译成功！固件已生成。"
           else
-            echo "!!! 编译失败，以下是最后 100 行关键报错日志 !!!"
+            echo "=== 编译可能失败，最后 100 行日志如下 ==="
             tail -n 100 build.log
             exit 1
           fi
 
       - name: Upload Firmware
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: OpenWrt-Ruijie-Firmware
