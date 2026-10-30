@@ -24,47 +24,52 @@ jobs:
           git clone https://github.com/Chen-xicheng/openwrt-ruijie-rg-ma3063-cn-2.git openwrt
           cd openwrt
 
+      - name: Clean Environment
+        run: |
+          cd openwrt
+          # 彻底清理所有可能的残留目录
+          make dirclean || true
+          rm -rf build_dir staging_dir tmp
+
       - name: Configure Build
         run: |
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           
-          rm -f .config
-          echo "CONFIG_TARGET_qualcommax=y" > .config
-          echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
-          echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
-          
-          echo "CONFIG_PACKAGE_luci=y" >> .config
-          echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
-          echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
-          echo "CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
+          # 强制覆盖生成干净的 .config
+          cat <<EOF > .config
+          CONFIG_TARGET_qualcommax=y
+          CONFIG_TARGET_qualcommax_ipq50xx=y
+          CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y
+          CONFIG_TARGET_PROFILE="DEVICE_ruijie_rg-ma3063"
+          CONFIG_PACKAGE_luci=y
+          CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
+          CONFIG_PACKAGE_luci-theme-argon=y
+          CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y
+          CONFIG_PACKAGE_luci-app-ttyd=y
+          EOF
           
           make defconfig
+          # 下载所有依赖包，避免编译中途因下载失败中断
           make download -j8
 
       - name: Compile Firmware
         run: |
           cd openwrt
-          # 降低并行度，防止OOM，同时记录日志
-          make -j4 > build.log 2>&1 || true
+          # -j1 单线程 + V=s 输出所有编译细节，并将日志保存，方便失败时直接读取
+          make -j1 V=s > build.log 2>&1 || true
           
           if ls bin/targets/qualcommax/ipq50xx/*ruijie_rg-ma3063*.bin 1> /dev/null 2>&1; then
-            echo "编译成功！固件已生成。"
+            echo "✅ 编译成功！固件已生成。"
           else
-            echo "=============================================="
-            echo "编译失败，以下是错误日志的关键部分："
-            echo "=============================================="
-            # 打印最后150行日志
+            echo "❌ 编译失败，以下是最后 150 行日志："
             tail -n 150 build.log
-            echo "=============================================="
-            echo "请将以上日志内容完整复制出来，以便进一步分析。"
-            echo "=============================================="
             exit 1
           fi
 
       - name: Upload Firmware
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: OpenWrt-Ruijie-Firmware
