@@ -17,7 +17,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential ccache ecj fastjar file g++ gawk gettext git java-propose-classpath libelf-dev libncurses5-dev libncursesw5-dev libssl-dev python3 python3-dev python3-setuptools python3-pip rsync subversion swig time xsltproc zlib1g-dev
+          sudo apt-get install -y build-essential ccache ecj fastjar file g++ gawk gettext git java-propose-classpath libelf-dev libncurses5-dev libncursesw5-dev libssl-dev python3 python3-dev python3-setuptools python3-pip rsync subversion swig time xsltproc zlib1g-dev nodejs npm
 
       - name: Clone Your Repository
         run: |
@@ -29,41 +29,12 @@ jobs:
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-
-          echo "=== 动态注入锐捷设备定义（绝不删除原文件）==="
-          MK_FILE="target/linux/qualcommax/image/ipq50xx.mk"
-          if ! grep -q "Device/ruijie_rg-ma3063" "$MK_FILE"; then
-            echo "" >> "$MK_FILE"
-            echo "define Device/ruijie_rg-ma3063" >> "$MK_FILE"
-            echo "  DEVICE_VENDOR := Ruijie" >> "$MK_FILE"
-            echo "  DEVICE_MODEL := RG-MA3063" >> "$MK_FILE"
-            echo "  DEVICE_DTS := ipq5018-ruijie_rg-ma3063" >> "$MK_FILE"
-            echo "  DEVICE_PACKAGES := \$(DEVICE_PACKAGES_ipq50xx)" >> "$MK_FILE"
-            echo "  IMAGE_SIZE := 40960k" >> "$MK_FILE"
-            echo "  IMAGES := sysupgrade.bin factory.bin" >> "$MK_FILE"
-            echo "  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata" >> "$MK_FILE"
-            echo "  IMAGE/factory.bin := append-ubi" >> "$MK_FILE"
-            echo "endef" >> "$MK_FILE"
-            echo "TARGET_DEVICES += ruijie_rg-ma3063" >> "$MK_FILE"
-          fi
-
-          echo "=== 复制 DTS 避开语法报错 ==="
-          DTS_DIR="target/linux/qualcommax/files/arch/arm64/boot/dts/qcom"
-          if [ -d "target/linux/qualcommax/dts" ]; then
-            DTS_DIR="target/linux/qualcommax/dts"
-          fi
-          SRC_DTS="$DTS_DIR/ipq5018-mr3000d-ci.dts"
-          if [ -f "$SRC_DTS" ]; then
-            cp "$SRC_DTS" "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
-            sed -i 's/model = ".*";/model = "Ruijie RG-MA3063";/' "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
-            sed -i 's/compatible = ".*";/compatible = "ruijie,rg-ma3063";/' "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
-          fi
-
-          echo "=== 生成 .config ==="
+          
+          rm -f .config
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y" >> .config
-          echo "CONFIG_TARGET_PROFILE=\"DEVICE_ruijie_rg-ma3063\"" >> .config
+          
           echo "CONFIG_PACKAGE_luci=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
           echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
@@ -71,14 +42,27 @@ jobs:
           echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
           
           make defconfig
-          
-          echo "=== 验证当前选中的设备 ==="
-          grep "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_" .config | grep "=y"
+          make download -j8
 
       - name: Compile Firmware
         run: |
           cd openwrt
-          make -j$(nproc) || make -j1 V=s
+          # 降低并行度，防止OOM，同时记录日志
+          make -j4 > build.log 2>&1 || true
+          
+          if ls bin/targets/qualcommax/ipq50xx/*ruijie_rg-ma3063*.bin 1> /dev/null 2>&1; then
+            echo "编译成功！固件已生成。"
+          else
+            echo "=============================================="
+            echo "编译失败，以下是错误日志的关键部分："
+            echo "=============================================="
+            # 打印最后150行日志
+            tail -n 150 build.log
+            echo "=============================================="
+            echo "请将以上日志内容完整复制出来，以便进一步分析。"
+            echo "=============================================="
+            exit 1
+          fi
 
       - name: Upload Firmware
         uses: actions/upload-artifact@v4
