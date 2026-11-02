@@ -24,33 +24,32 @@ jobs:
           git clone https://github.com/Chen-xicheng/openwrt-ruijie-rg-ma3063-cn-2.git openwrt
           cd openwrt
 
-      - name: Auto Fix DTS Path
+      - name: Fix DTS Path & Ensure Clean Build
         run: |
           cd openwrt
-          echo "=== 自动查找并修正 DTS 文件路径 ==="
+          echo "=== 步骤1: 自动查找并修正 DTS 文件路径 ==="
           
           MK_FILE="target/linux/qualcommax/image/ipq50xx.mk"
+          OLD_DTS_BASE="ipq5018-ruijie_rg-ma3063"
+          NEW_DTS_BASE="ipq5018-rg-ma3063" # 假设你仓库中的文件名为这个
           
-          # 1. 查找仓库中实际的 DTS 文件位置（适配新旧两种目录结构）
-          DTS_PATH=$(find . -name "*ruijie*rg-ma3063*.dts" -o -name "ipq5018-rg-ma3063.dts" | head -n 1)
+          # 尝试查找仓库中实际的 DTS 文件（适配新旧两种路径）
+          FOUND_DTS=$(find . -name "${OLD_DTS_BASE}.dts" -o -name "${NEW_DTS_BASE}.dts" | head -n 1)
           
-          if [ -z "$DTS_PATH" ]; then
+          if [ -z "$FOUND_DTS" ]; then
             echo "❌ 错误：在仓库中未找到任何锐捷 MA3063 的 DTS 文件！"
-            echo "请确认你已上传了 ipq5018-rg-ma3063.dts 文件。"
             exit 1
           fi
           
-          echo "✅ 找到 DTS 文件: $DTS_PATH"
+          DTS_BASENAME=$(basename "$FOUND_DTS" .dts)
+          echo "✅ 找到 DTS 文件: $FOUND_DTS，设备名为: $DTS_BASENAME"
           
-          # 2. 从路径中提取文件名（不带 .dts 后缀）
-          DTS_BASENAME=$(basename "$DTS_PATH" .dts)
-          echo "✅ 提取的 DTS 名称: $DTS_BASENAME"
-          
-          # 3. 强制修正 Makefile 中的 DEVICE_DTS 设置
+          # 强制修正 Makefile 中的 DEVICE_DTS 设置
           sed -i "s|^  DEVICE_DTS :=.*|  DEVICE_DTS := $DTS_BASENAME|" "$MK_FILE"
           
-          echo "=== 修正后的 Makefile 片段 ==="
-          grep -A 5 "define Device/ruijie_rg-ma3063" "$MK_FILE"
+          echo "=== 步骤2: 彻底清理所有构建缓存，确保纯净环境 ==="
+          make dirclean || true
+          rm -rf build_dir staging_dir tmp
 
       - name: Configure Build
         run: |
@@ -75,7 +74,7 @@ jobs:
       - name: Compile Firmware
         run: |
           cd openwrt
-          # 使用 -j1 单线程编译，避免OOM，并完整记录日志
+          # 使用单线程(-j1)编译，避免内存溢出，并记录完整日志
           make -j1 V=s > build.log 2>&1 || true
           
           if ls bin/targets/qualcommax/ipq50xx/*ruijie_rg-ma3063*.bin 1> /dev/null 2>&1; then
