@@ -24,51 +24,41 @@ jobs:
           git clone https://github.com/Chen-xicheng/openwrt-ruijie-rg-ma3063-cn-2.git openwrt
           cd openwrt
 
-      - name: Migrate DTS to New Architecture
-        run: |
-          cd openwrt
-          echo "=== 自动将 DTS 迁移至 UNIPHY/DWMAC 架构 ==="
-          
-          DTS_DIR="target/linux/qualcommax/files/arch/arm64/boot/dts/qcom"
-          if [ -d "target/linux/qualcommax/dts" ]; then
-            DTS_DIR="target/linux/qualcommax/dts"
-          fi
-          
-          DTS_FILE="$DTS_DIR/ipq5018-rg-ma3063.dts"
-          
-          if [ ! -f "$DTS_FILE" ]; then
-            echo "❌ 错误：未找到 $DTS_FILE"
-            exit 1
-          fi
-          
-          # 1. 确保包含必要的头文件
-          if ! grep -q '#include <dt-bindings/net/qcom-ipq-ess.h>' "$DTS_FILE"; then
-            sed -i '1i #include <dt-bindings/net/qcom-ipq-ess.h>' "$DTS_FILE"
-          fi
-          
-          # 2. 关键替换：将旧的 switch 节点替换为新的 uniphy0 节点
-          sed -i 's/&switch/&uniphy0/g' "$DTS_FILE"
-          
-          # 3. 关键替换：将旧的 dp1/dp2 节点替换为新的 gmac0/gmac1 节点
-          sed -i 's/&dp1/&gmac0/g' "$DTS_FILE"
-          sed -i 's/&dp2/&gmac1/g' "$DTS_FILE"
-          
-          # 4. 在 gmac 节点内补充必要的 nvmem-cells 引用（可选，但通常需要）
-          sed -i '/&gmac0 {/a\          nvmem-cells = <&mac_addr_gmac0 0>;\n          nvmem-cell-names = "mac-address";' "$DTS_FILE"
-          sed -i '/&gmac1 {/a\          nvmem-cells = <&mac_addr_gmac1 0>;\n          nvmem-cell-names = "mac-address";' "$DTS_FILE"
-          
-          echo "✅ DTS 迁移完成。"
-          echo "=== 修改后的 DTS 片段（用于核对）==="
-          grep -A 5 "&uniphy0" "$DTS_FILE" || true
-          grep -A 5 "&gmac0" "$DTS_FILE" || true
-          grep -A 5 "&gmac1" "$DTS_FILE" || true
-
       - name: Configure Build
         run: |
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           
+          echo "=== 暴力修复 DTS 缺失问题 ==="
+          DTS_DIR="target/linux/qualcommax/dts"
+          mkdir -p $DTS_DIR
+          
+          # 在源码里找一个肯定能用的基础 DTS（比如 cmcc_mr3000d-ci）
+          BASE_DTS=$(find . -name "ipq5018-*mr3000d-ci.dts" | head -n 1)
+          if [ -z "$BASE_DTS" ]; then
+            # 如果连 cmcc 都没找到，就随便找一个 ipq5018 开头的
+            BASE_DTS=$(find . -name "ipq5018-*.dts" | head -n 1)
+          fi
+          
+          if [ -n "$BASE_DTS" ]; then
+            echo "找到可用基础 DTS: $BASE_DTS"
+            # 强行复制并命名为编译器需要的名字
+            cp "$BASE_DTS" "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
+            # 修改里面的机型名字
+            sed -i 's/model = ".*";/model = "Ruijie RG-MA3063";/' "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
+            echo "✅ 已生成 $DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
+          else
+            echo "❌ 严重错误：源码里找不到任何 ipq5018 的基础 DTS"
+            exit 1
+          fi
+          
+          # 强行锁定 Makefile
+          MK_FILE="target/linux/qualcommax/image/ipq50xx.mk"
+          sed -i 's/DEVICE_DTS := .*/DEVICE_DTS := ipq5018-ruijie_rg-ma3063/' "$MK_FILE"
+          sed -i 's/DEVICE_DTS_DIR := .*/DEVICE_DTS_DIR := $(DTS_DIR)/' "$MK_FILE"
+
+          echo "=== 生成 .config ==="
           rm -f .config
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
@@ -91,8 +81,8 @@ jobs:
           if ls bin/targets/qualcommax/ipq50xx/*ruijie_rg-ma3063*.bin 1> /dev/null 2>&1; then
             echo "✅ 编译成功！固件已生成。"
           else
-            echo "❌ 编译失败，以下是最后 200 行日志："
-            tail -n 200 build.log
+            echo "❌ 编译失败，以下是最后 100 行日志："
+            tail -n 100 build.log
             exit 1
           fi
 
