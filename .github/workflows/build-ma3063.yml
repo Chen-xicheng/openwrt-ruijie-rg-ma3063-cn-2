@@ -29,36 +29,26 @@ jobs:
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+
+          echo "=== 强制修复 Makefile 中的内核打包规则 ==="
+          MK_FILE="target/linux/qualcommax/image/ipq50xx.mk"
           
-          echo "=== 暴力修复 DTS 缺失问题 ==="
-          DTS_DIR="target/linux/qualcommax/dts"
-          mkdir -p $DTS_DIR
-          
-          # 在源码里找一个肯定能用的基础 DTS（比如 cmcc_mr3000d-ci）
-          BASE_DTS=$(find . -name "ipq5018-*mr3000d-ci.dts" | head -n 1)
-          if [ -z "$BASE_DTS" ]; then
-            # 如果连 cmcc 都没找到，就随便找一个 ipq5018 开头的
-            BASE_DTS=$(find . -name "ipq5018-*.dts" | head -n 1)
-          fi
-          
-          if [ -n "$BASE_DTS" ]; then
-            echo "找到可用基础 DTS: $BASE_DTS"
-            # 强行复制并命名为编译器需要的名字
-            cp "$BASE_DTS" "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
-            # 修改里面的机型名字
-            sed -i 's/model = ".*";/model = "Ruijie RG-MA3063";/' "$DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
-            echo "✅ 已生成 $DTS_DIR/ipq5018-ruijie_rg-ma3063.dts"
-          else
-            echo "❌ 严重错误：源码里找不到任何 ipq5018 的基础 DTS"
+          # 1. 确保设备定义块存在
+          if ! grep -q "define Device/ruijie_rg-ma3063" "$MK_FILE"; then
+            echo "❌ 错误：在 $MK_FILE 中找不到 ruijie_rg-ma3063 的设备定义！"
             exit 1
           fi
-          
-          # 强行锁定 Makefile
-          MK_FILE="target/linux/qualcommax/image/ipq50xx.mk"
-          sed -i 's/DEVICE_DTS := .*/DEVICE_DTS := ipq5018-ruijie_rg-ma3063/' "$MK_FILE"
-          sed -i 's/DEVICE_DTS_DIR := .*/DEVICE_DTS_DIR := $(DTS_DIR)/' "$MK_FILE"
 
-          echo "=== 生成 .config ==="
+          # 2. 使用 sed 在设备定义块内，紧接在 "DEVICE_VENDOR :=" 行之后，插入 KERNEL 规则
+          #    这行规则告诉系统如何从内核二进制文件生成最终的 kernel.bin
+          sed -i '/define Device\/ruijie_rg-ma3063/,/endef/ {
+            /DEVICE_VENDOR :=/a\  KERNEL := kernel-bin | append-dtb\n  KERNEL_NAME := Image
+          }' "$MK_FILE"
+          
+          echo "=== Makefile 修复完成，当前设备定义如下 ==="
+          sed -n '/define Device\/ruijie_rg-ma3063/,/endef/p' "$MK_FILE"
+          
+          # 3. 强制生成干净的配置文件
           rm -f .config
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
@@ -81,8 +71,8 @@ jobs:
           if ls bin/targets/qualcommax/ipq50xx/*ruijie_rg-ma3063*.bin 1> /dev/null 2>&1; then
             echo "✅ 编译成功！固件已生成。"
           else
-            echo "❌ 编译失败，以下是最后 100 行日志："
-            tail -n 100 build.log
+            echo "❌ 编译失败，以下是最后 150 行日志："
+            tail -n 150 build.log
             exit 1
           fi
 
